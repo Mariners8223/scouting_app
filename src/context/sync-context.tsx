@@ -19,8 +19,11 @@ type SyncContextValue = {
   lastError: string | undefined;
   lastSyncAt: string | undefined;
   syncNow: () => Promise<void>;
-  /** Downloads the published templates; `force` skips the wait between checks. Resolves false when offline. */
-  refreshTemplates: (force?: boolean) => Promise<boolean>;
+  /**
+   * Downloads the published templates; `force` skips the wait between checks.
+   * Resolves the names of templates that changed, or null when the spreadsheet couldn't be reached.
+   */
+  refreshTemplates: (force?: boolean) => Promise<string[] | null>;
 };
 
 const SyncContext = createContext<SyncContextValue | null>(null);
@@ -66,16 +69,15 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const lastTemplateCheck = useRef(0);
   const refreshTemplates = useCallback(
     async (force = false) => {
-      if (!force && Date.now() - lastTemplateCheck.current < TEMPLATE_CHECK_MS) return true;
+      if (!force && Date.now() - lastTemplateCheck.current < TEMPLATE_CHECK_MS) return [];
       lastTemplateCheck.current = Date.now();
       try {
         const { templates: published, inUseId } = await fetchPublished();
-        applyPublished(published, inUseId);
-        return true;
+        return applyPublished(published, inUseId);
       } catch (e) {
         lastTemplateCheck.current = 0; // try again at the next chance
         console.warn('Could not download templates', e);
-        return false;
+        return null;
       }
     },
     [applyPublished],

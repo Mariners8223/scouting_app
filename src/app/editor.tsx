@@ -10,7 +10,6 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AppButton, Row, SwitchRow } from '@/components/ui/controls';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { useSync } from '@/context/sync-context';
 import { useTemplates } from '@/context/templates-context';
 import { schemaProblems } from '@/form/logic';
 import type { FormSchema } from '@/form/types';
@@ -20,14 +19,12 @@ import { publishTemplate } from '@/services/sheets-api';
 export default function EditorScreen() {
   const safeArea = useSafeAreaInsets();
   const { loading, templates, active, saveTemplate, markPublished } = useTemplates();
-  const { refreshTemplates } = useSync();
   // Stays unlocked until the app restarts or Lock is pressed.
   const [unlocked, setUnlocked] = useState(false);
   // The template being edited is a copy, so nothing changes until Save.
   const [draft, setDraft] = useState<FormSchema>();
   const [publishing, setPublishing] = useState(false);
   const [inUse, setInUse] = useState(true);
-  const [checking, setChecking] = useState(false);
 
   const saved = templates.find((t) => t.id === draft?.id);
   // Publishing or a download only changes publishedVersion, which isn't an edit.
@@ -64,13 +61,6 @@ export default function EditorScreen() {
     );
   };
 
-  const checkForUpdates = async () => {
-    setChecking(true);
-    const ok = await refreshTemplates(true);
-    setChecking(false);
-    showMessage(ok ? 'Templates are up to date' : 'No connection', ok ? undefined : 'Try again with internet.');
-  };
-
   const close = () => {
     if (!dirty) {
       setDraft(undefined);
@@ -97,9 +87,6 @@ export default function EditorScreen() {
             disabled={saved?.publishedVersion === saved?.version}
             onPress={startPublish}
           />
-        ) : null}
-        {unlocked && !draft ? (
-          <AppButton title={checking ? 'Checking…' : 'Update'} variant="ghost" small disabled={checking} onPress={checkForUpdates} />
         ) : null}
         {unlocked && !draft ? <AppButton title="Lock" variant="ghost" small onPress={() => setUnlocked(false)} /> : null}
       </Row>

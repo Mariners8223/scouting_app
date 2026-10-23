@@ -18,8 +18,8 @@ type TemplatesContextValue = {
   deleteTemplate: (id: string) => void;
   /** Records that this version is now the one on all phones. */
   markPublished: (id: string, version: number) => void;
-  /** Takes in the templates published for all phones; newer versions replace the ones on this device. */
-  applyPublished: (published: FormSchema[], inUseId: string | undefined) => void;
+  /** Takes in the templates published for all phones; newer versions replace the ones on this device. Returns the names of the ones that changed. */
+  applyPublished: (published: FormSchema[], inUseId: string | undefined) => string[];
   /** Every saved form on this device, sent or not. */
   submissions: Submission[];
   /** Saves a finished form and returns it (with its key). */
@@ -135,6 +135,12 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
         const local = current.find((t) => t.id === p.id);
         return !local || local.version < p.version || local.publishedVersion !== p.version;
       });
+      const changed = newer
+        .filter((p) => {
+          const local = current.find((t) => t.id === p.id);
+          return !local || local.version < p.version;
+        })
+        .map((p) => `${p.year} · ${p.name}`);
       if (newer.length) {
         updateTemplates((list) => {
           const next = [...list];
@@ -158,6 +164,7 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
           saveJson(KEYS.publishedInUseId, inUseId).catch((e) => console.error('Failed to save in-use template', e));
         });
       }
+      return changed;
     },
     [updateTemplates, setActive],
   );

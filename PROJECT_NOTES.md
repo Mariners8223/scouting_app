@@ -15,8 +15,8 @@ An FRC match-scouting app for team Mariners 8223, built with **Expo SDK 58 / Rea
 
 | Tab | File | What it does |
 | --- | --- | --- |
-| Scout | `src/app/index.tsx` | Fills in the active template. Dynamic tabs, required-answer check, draft kept while filling, **Switch** button to change template (no code needed), sync status ("N waiting for internet · tap to send", plus the reason when the sheet refused a form). After saving it shows the form's **key**; **Open** shows any saved form by key (see below). |
-| Form Editor | `src/app/editor.tsx` | Locked behind an editor code. Lists templates by year; create, copy to a new year, delete, pick the one in use; edit tabs, questions, conditions, tab order, spreadsheet link and columns. **Publish** (asks for the editor code again) sends a template to all phones; **Update** downloads the published ones now. |
+| Scout | `src/app/index.tsx` | Fills in the active template. **Update** (no code) downloads the newest published forms, sends waiting forms and checks for a new app version (offers a restart; the form in progress is kept). Dynamic tabs, required-answer check, draft kept while filling, **Switch** button to change template (no code needed), sync status ("N waiting for internet · tap to send", plus the reason when the sheet refused a form). After saving it shows the form's **key**; **Open** shows any saved form by key (see below). |
+| Form Editor | `src/app/editor.tsx` | Locked behind an editor code. Lists templates by year; create, copy to a new year, delete, pick the one in use; edit tabs, questions, conditions, tab order, spreadsheet link and columns. **Publish** (asks for the editor code again) sends a template to all phones. |
 
 ## A new season without code changes
 
@@ -142,3 +142,7 @@ The Form Editor asks for a code, and **publishing and loading columns ask for it
 - `1f2ab44` Sync saved forms to Google Sheets + `apps-script/Code.gs`
 - `3a7b03c` EAS build setup (app name, ids, eas.json)
 - `86ef16a` Offline PWA on GitHub Pages
+
+## App icon
+
+The team logo (`assets/images/mariners-logo-source.png`, 225x225) is the source of every icon: `public/icons/*` (iPhone home screen, PWA, maskable), `assets/images/icon.png`, `favicon.png`, `splash-icon.png` and the Android adaptive icon. The source is small, so the 512/1024 icons are upscaled and a little soft; a bigger logo file can be dropped in and the icons regenerated (PIL script: logo centred on white, 92% of the size, 78% for the maskable icon).

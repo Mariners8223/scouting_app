@@ -23,6 +23,7 @@ import {
 } from '@/form/logic';
 import type { Answers, FormSchema } from '@/form/types';
 import { useTheme } from '@/hooks/use-theme';
+import { downloadAppUpdate, restartApp } from '@/services/app-update';
 import { KEYS, loadJson, saveJson } from '@/services/storage';
 import { confirmAction, showMessage } from '@/services/dialogs';
 
@@ -38,7 +39,8 @@ export default function ScoutScreen() {
   const { loading, active, templates, setActive, addSubmission, submissions } = useTemplates();
   const [picking, setPicking] = useState(false);
   const [opening, setOpening] = useState(false);
-  const { pendingCount, syncing, syncNow, lastError } = useSync();
+  const [updating, setUpdating] = useState(false);
+  const { pendingCount, syncing, syncNow, lastError, refreshTemplates } = useSync();
   const [answers, setAnswers] = useState<Answers>({});
   const [tabId, setTabId] = useState<string>();
   const [showMissing, setShowMissing] = useState(false);
@@ -134,6 +136,32 @@ export default function ScoutScreen() {
     );
   };
 
+  /** Anyone can do this, no code: the newest published forms, unsent forms, and a new version of the app itself. */
+  const update = async () => {
+    setUpdating(true);
+    try {
+      const [changed, appReady] = await Promise.all([
+        refreshTemplates(true),
+        downloadAppUpdate().catch(() => false),
+        syncNow(),
+      ]);
+      if (changed === null) {
+        showMessage('No connection', 'Couldn’t reach the spreadsheet. Try again with internet.');
+      } else if (appReady) {
+        confirmAction(
+          'New app version ready',
+          'Restart the app to use it? The form you are filling in is kept.',
+          'Restart',
+          restartApp,
+        );
+      } else {
+        showMessage(changed.length ? 'Updated' : 'Everything is up to date', changed.length ? `New: ${changed.join(', ')}` : undefined);
+      }
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   const clear = () =>
     confirmAction('Clear form?', 'All answers in this form will be deleted.', 'Clear', () => resetForm(false));
 
@@ -160,7 +188,7 @@ export default function ScoutScreen() {
   return (
     <ThemedView style={[styles.container, { paddingTop: safeArea.top }]}>
       <View style={styles.header}>
-        <View style={{ flex: 1 }}>
+        <View style={styles.headerTitle}>
           <ThemedText type="smallBold">{active.name}</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
             {active.year} · {savedHere} saved on this device
@@ -180,11 +208,14 @@ export default function ScoutScreen() {
             ) : null}
           </Pressable>
         </View>
-        <AppButton title="Open" variant="ghost" small onPress={() => setOpening(true)} />
-        {templates.length > 1 ? (
-          <AppButton title="Switch" variant="ghost" small onPress={() => setPicking(true)} />
-        ) : null}
-        <AppButton title="Clear" variant="ghost" small onPress={clear} />
+        <View style={styles.headerButtons}>
+          <AppButton title={updating ? 'Updating…' : 'Update'} variant="ghost" small disabled={updating} onPress={update} />
+          <AppButton title="Open" variant="ghost" small onPress={() => setOpening(true)} />
+          {templates.length > 1 ? (
+            <AppButton title="Switch" variant="ghost" small onPress={() => setPicking(true)} />
+          ) : null}
+          <AppButton title="Clear" variant="ghost" small onPress={clear} />
+        </View>
       </View>
 
       {opening ? <OpenForm onClose={() => setOpening(false)} /> : null}
@@ -273,9 +304,20 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
+    columnGap: Spacing.two,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
+  },
+  headerTitle: {
+    flexGrow: 1,
+    flexBasis: 260,
+  },
+  // Wraps under the title on a phone, sits beside it on a wide screen.
+  headerButtons: {
+    flexDirection: 'row',
+    marginLeft: 'auto',
   },
   tabsScroll: {
     flexGrow: 0,
