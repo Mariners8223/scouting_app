@@ -17,8 +17,14 @@ async function callScript<T>(action: string, payload: object): Promise<T> {
       body: JSON.stringify({ action, ...payload }),
       signal: controller.signal,
     });
-    const result = await response.json();
-    if (!result?.ok) throw new Error(result?.error ?? `HTTP ${response.status}`);
+    const result = await response.json().catch(() => undefined);
+    // Code.gs always answers with "ok"; anything else is another script (e.g. an older deployment at this URL).
+    if (typeof result?.ok !== 'boolean') {
+      throw new Error(
+        'The Google script at this address is an old version. Deploy the new Code.gs as a new version of the existing deployment.',
+      );
+    }
+    if (!result.ok) throw new Error(result.error ?? `HTTP ${response.status}`);
     return result as T;
   } finally {
     clearTimeout(timer);
