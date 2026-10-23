@@ -15,7 +15,7 @@ An FRC match-scouting app for team Mariners 8223, built with **Expo SDK 58 / Rea
 
 | Tab | File | What it does |
 | --- | --- | --- |
-| Scout | `src/app/index.tsx` | Fills in the active template. **Update** (no code) downloads the newest published forms, sends waiting forms and checks for a new app version (offers a restart; the form in progress is kept). Dynamic tabs, required-answer check, draft kept while filling, **Switch** button to change template (no code needed), sync status ("N waiting for internet · tap to send", plus the reason when the sheet refused a form). After saving it shows the form's **key**; **Open** shows any saved form by key (see below). |
+| Scout | `src/app/index.tsx` | Fills in the active template. **Update** (no code) downloads the newest published forms, sends waiting forms and checks for a new app version (offers a restart; the form in progress is kept). Dynamic tabs, required-answer check, draft kept while filling, **Switch** button (always shown) or a tap on the form name to change template (no code needed; a manual choice sticks until the next template is marked in use), sync status ("N waiting for internet · tap to send", plus the reason when the sheet refused a form). After saving it shows the form's **key**; **Open** shows any saved form by key (see below). |
 | Form Editor | `src/app/editor.tsx` | Locked behind an editor code. Lists templates by year; create, copy to a new year, delete, pick the one in use; edit tabs, questions, conditions, tab order, spreadsheet link and columns. **Publish** (asks for the editor code again) sends a template to all phones. |
 
 ## A new season without code changes

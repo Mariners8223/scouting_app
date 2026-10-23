@@ -189,7 +189,10 @@ export default function ScoutScreen() {
     <ThemedView style={[styles.container, { paddingTop: safeArea.top }]}>
       <View style={styles.header}>
         <View style={styles.headerTitle}>
-          <ThemedText type="smallBold">{active.name}</ThemedText>
+          {/* Tapping the form's name switches template too; no code needed. */}
+          <Pressable accessibilityRole="button" onPress={() => setPicking(true)}>
+            <ThemedText type="smallBold">{active.name} ▾</ThemedText>
+          </Pressable>
           <ThemedText type="small" themeColor="textSecondary">
             {active.year} · {savedHere} saved on this device
           </ThemedText>
@@ -211,9 +214,7 @@ export default function ScoutScreen() {
         <View style={styles.headerButtons}>
           <AppButton title={updating ? 'Updating…' : 'Update'} variant="ghost" small disabled={updating} onPress={update} />
           <AppButton title="Open" variant="ghost" small onPress={() => setOpening(true)} />
-          {templates.length > 1 ? (
-            <AppButton title="Switch" variant="ghost" small onPress={() => setPicking(true)} />
-          ) : null}
+          <AppButton title="Switch" variant="ghost" small onPress={() => setPicking(true)} />
           <AppButton title="Clear" variant="ghost" small onPress={clear} />
         </View>
       </View>
@@ -233,7 +234,20 @@ export default function ScoutScreen() {
                 if (chosen) switchTemplate(chosen.id);
               }}
             />
-            <AppButton title="Cancel" onPress={() => setPicking(false)} />
+            {templates.length === 1 ? (
+              <ThemedText type="small" themeColor="textSecondary">
+                This is the only form on this phone. Update downloads the forms published for all phones.
+              </ThemedText>
+            ) : null}
+            <Row style={{ flexWrap: 'nowrap' }}>
+              <AppButton title="Cancel" onPress={() => setPicking(false)} style={{ flex: 1 }} />
+              <AppButton
+                title={updating ? 'Updating…' : 'Update forms'}
+                disabled={updating}
+                onPress={update}
+                style={{ flex: 1 }}
+              />
+            </Row>
           </Pressable>
         </Pressable>
       </Modal>
