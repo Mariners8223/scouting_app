@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { EditorLock } from '@/components/editor/editor-lock';
 import { TemplateEditor } from '@/components/editor/template-editor';
 import { TemplatesList } from '@/components/editor/templates-list';
 import { ThemedText } from '@/components/themed-text';
@@ -15,6 +16,8 @@ import type { FormSchema } from '@/form/types';
 export default function EditorScreen() {
   const safeArea = useSafeAreaInsets();
   const { loading, templates, saveTemplate } = useTemplates();
+  // Stays unlocked until the app restarts or Lock is pressed.
+  const [unlocked, setUnlocked] = useState(false);
   // The template being edited is a copy, so nothing changes until Save.
   const [draft, setDraft] = useState<FormSchema>();
 
@@ -55,6 +58,7 @@ export default function EditorScreen() {
           {draft ? `${draft.year} · ${draft.name}` : 'Form templates'}
         </ThemedText>
         {draft ? <AppButton title={dirty ? 'Save' : 'Saved'} variant="primary" small disabled={!dirty} onPress={save} /> : null}
+        {unlocked && !draft ? <AppButton title="Lock" variant="ghost" small onPress={() => setUnlocked(false)} /> : null}
       </Row>
 
       {loading ? (
@@ -65,7 +69,13 @@ export default function EditorScreen() {
         <ScrollView
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={[styles.content, { paddingBottom: safeArea.bottom + BottomTabInset + Spacing.six }]}>
-          {draft ? <TemplateEditor draft={draft} onChange={setDraft} /> : <TemplatesList onEdit={open} />}
+          {!unlocked ? (
+            <EditorLock onUnlock={() => setUnlocked(true)} />
+          ) : draft ? (
+            <TemplateEditor draft={draft} onChange={setDraft} />
+          ) : (
+            <TemplatesList onEdit={open} />
+          )}
         </ScrollView>
       )}
     </ThemedView>
