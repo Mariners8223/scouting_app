@@ -87,8 +87,12 @@ export type FormSchema = {
   /** Bumped on every save, stored with each submission. */
   version: number;
   updatedAt: string;
+  /** Google spreadsheet id that receives this form's answers. Empty = the script's home spreadsheet. */
+  spreadsheetId?: string;
   /** Spreadsheet tab that receives this form's answers. Defaults to the template name. */
   sheetName?: string;
+  /** The version last published to all phones (or downloaded from there). */
+  publishedVersion?: number;
   /** Write to fixed columns (each question's `column`) instead of one column per question id. */
   columnLayout?: ColumnLayout;
   sections: Section[];
@@ -103,7 +107,8 @@ export type Submission = {
   createdAt: string;
   schemaId: string;
   schemaVersion: number;
-  /** Spreadsheet tab, fixed when the form is saved so later template edits don't move old rows. */
+  /** Spreadsheet and tab, fixed when the form is saved so later template edits don't move old rows. */
+  spreadsheetId?: string;
   sheetName?: string;
   answers: Answers;
   /** When the spreadsheet confirmed it; missing while waiting to be sent. */

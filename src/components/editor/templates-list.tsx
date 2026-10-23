@@ -93,7 +93,12 @@ export function TemplatesList({ onEdit }: { onEdit: (template: FormSchema) => vo
               <View style={{ flex: 1 }}>
                 <ThemedText>{t.name}</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
-                  {t.sections.length} tabs · {answerQuestions(t).length} questions · v{t.version}
+                  {t.sections.length} tabs · {answerQuestions(t).length} questions · v{t.version} ·{' '}
+                  {t.publishedVersion === undefined
+                    ? 'only on this phone'
+                    : t.publishedVersion === t.version
+                      ? 'published'
+                      : `published v${t.publishedVersion}, not this version`}
                 </ThemedText>
               </View>
               {isActive ? (

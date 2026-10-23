@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { DEFAULT_SCHEMA } from '@/form/default-schema';
-import { newId } from '@/form/logic';
+import { newId, newKey, schemaProblems } from '@/form/logic';
 import type { Answers, FormSchema, Submission } from '@/form/types';
 import { KEYS, loadJson, requestPersistentStorage, saveJson } from '@/services/storage';
 
@@ -16,9 +16,14 @@ type TemplatesContextValue = {
   saveTemplate: (schema: FormSchema) => FormSchema;
   createTemplate: (options: { name: string; year: number; copyFromId?: string }) => FormSchema;
   deleteTemplate: (id: string) => void;
+  /** Records that this version is now the one on all phones. */
+  markPublished: (id: string, version: number) => void;
+  /** Takes in the templates published for all phones; newer versions replace the ones on this device. */
+  applyPublished: (published: FormSchema[], inUseId: string | undefined) => void;
   /** Every saved form on this device, sent or not. */
   submissions: Submission[];
-  addSubmission: (schema: FormSchema, answers: Answers) => void;
+  /** Saves a finished form and returns it (with its key). */
+  addSubmission: (schema: FormSchema, answers: Answers) => Submission;
   /** Called by the sync once the spreadsheet confirmed these forms. */
   markSynced: (ids: string[]) => void;
 };
@@ -34,8 +39,10 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
   const [templates, setTemplates] = useState<FormSchema[]>([]);
   const [activeId, setActiveId] = useState<string>();
   const [submissions, setSubmissions] = useState<Submission[]>([]);
-  // Saving a form and the background sync can both change submissions; the ref keeps them from overwriting each other.
+  // Saving a form and the background sync can both change submissions (and the download can change
+  // templates while the editor saves); the refs keep them from overwriting each other.
   const submissionsRef = useRef<Submission[]>([]);
+  const templatesRef = useRef<FormSchema[]>([]);
 
   useEffect(() => {
     requestPersistentStorage();
@@ -50,7 +57,8 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
       const initial = stored?.length
         ? stored.map((t) => (t.id === DEFAULT_SCHEMA.id && t.version === 1 ? clone(DEFAULT_SCHEMA) : t))
         : [clone(DEFAULT_SCHEMA)];
-      setTemplates(initial.sort(byYear));
+      templatesRef.current = initial.sort(byYear);
+      setTemplates(templatesRef.current);
       if (initial.some((t) => t.id === storedActive)) {
         setActiveId(storedActive!);
       } else {
@@ -64,8 +72,9 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
-  const persistTemplates = useCallback((next: FormSchema[]) => {
-    const sorted = [...next].sort(byYear);
+  const updateTemplates = useCallback((change: (current: FormSchema[]) => FormSchema[]) => {
+    const sorted = [...change(templatesRef.current)].sort(byYear);
+    templatesRef.current = sorted;
     setTemplates(sorted);
     saveJson(KEYS.templates, sorted).catch((e) => console.error('Failed to save templates', e));
   }, []);
@@ -78,36 +87,79 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
   const saveTemplate = useCallback(
     (schema: FormSchema) => {
       const saved = { ...schema, version: schema.version + 1, updatedAt: new Date().toISOString() };
-      persistTemplates(templates.map((t) => (t.id === schema.id ? saved : t)));
+      updateTemplates((current) => current.map((t) => (t.id === schema.id ? saved : t)));
       return saved;
     },
-    [templates, persistTemplates],
+    [updateTemplates],
   );
 
   const createTemplate = useCallback<TemplatesContextValue['createTemplate']>(
     ({ name, year, copyFromId }) => {
-      const source = templates.find((t) => t.id === copyFromId);
+      const source = templatesRef.current.find((t) => t.id === copyFromId);
       const created: FormSchema = {
         ...(source ? clone(source) : { sections: [{ id: 'info', title: 'Info', questions: [] }] }),
         id: newId('form'),
         name,
         year,
         version: 1,
+        publishedVersion: undefined,
         updatedAt: new Date().toISOString(),
       };
-      persistTemplates([...templates, created]);
+      updateTemplates((current) => [...current, created]);
       return created;
     },
-    [templates, persistTemplates],
+    [updateTemplates],
   );
 
   const deleteTemplate = useCallback(
     (id: string) => {
-      const next = templates.filter((t) => t.id !== id);
-      persistTemplates(next);
+      updateTemplates((current) => current.filter((t) => t.id !== id));
+      const next = templatesRef.current;
       if (id === activeId && next.length) setActive(next[0].id);
     },
-    [templates, activeId, persistTemplates, setActive],
+    [activeId, updateTemplates, setActive],
+  );
+
+  const markPublished = useCallback(
+    (id: string, version: number) =>
+      updateTemplates((current) => current.map((t) => (t.id === id ? { ...t, publishedVersion: version } : t))),
+    [updateTemplates],
+  );
+
+  const applyPublished = useCallback(
+    (published: FormSchema[], inUseId: string | undefined) => {
+      // A broken download never replaces a working template.
+      const usable = published.filter((p) => p?.id && Array.isArray(p.sections) && !schemaProblems(p).length);
+      const current = templatesRef.current;
+      const newer = usable.filter((p) => {
+        const local = current.find((t) => t.id === p.id);
+        return !local || local.version < p.version || local.publishedVersion !== p.version;
+      });
+      if (newer.length) {
+        updateTemplates((list) => {
+          const next = [...list];
+          for (const p of newer) {
+            const at = next.findIndex((t) => t.id === p.id);
+            const local = next[at];
+            // A newer copy being edited on this phone stays; it only learns which version is published.
+            const keep = local && local.version > p.version;
+            const merged = keep ? { ...local, publishedVersion: p.version } : { ...p, publishedVersion: p.version };
+            if (at >= 0) next[at] = merged;
+            else next.push(merged);
+          }
+          return next;
+        });
+      }
+      // Switch scouting to the template marked "in use", once per change, so a scouter can still pick another one.
+      if (inUseId && templatesRef.current.some((t) => t.id === inUseId)) {
+        loadJson<string>(KEYS.publishedInUseId).then((applied) => {
+          if (applied === inUseId) return;
+          setActive(inUseId);
+          saveJson(KEYS.publishedInUseId, inUseId).catch((e) => console.error('Failed to save in-use template', e));
+        });
+      }
+    },
+    [updateTemplates, setActive],
   );
 
   const updateSubmissions = useCallback((change: (current: Submission[]) => Submission[]) => {
@@ -119,15 +171,20 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
 
   const addSubmission = useCallback(
     (schema: FormSchema, answers: Answers) => {
+      const taken = new Set(submissionsRef.current.map((s) => s.id));
+      let id = newKey();
+      while (taken.has(id)) id = newKey();
       const submission: Submission = {
-        id: newId('sub'),
+        id,
         createdAt: new Date().toISOString(),
         schemaId: schema.id,
         schemaVersion: schema.version,
+        spreadsheetId: schema.spreadsheetId,
         sheetName: schema.sheetName || schema.name,
         answers,
       };
       updateSubmissions((current) => [...current, submission]);
+      return submission;
     },
     [updateSubmissions],
   );
@@ -150,6 +207,8 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
       saveTemplate,
       createTemplate,
       deleteTemplate,
+      markPublished,
+      applyPublished,
       submissions,
       addSubmission,
       markSynced,
@@ -162,6 +221,8 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
       saveTemplate,
       createTemplate,
       deleteTemplate,
+      markPublished,
+      applyPublished,
       submissions,
       addSubmission,
       markSynced,

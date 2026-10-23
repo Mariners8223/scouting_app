@@ -3,12 +3,15 @@ import { Modal, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ConditionEditor } from '@/components/editor/condition-editor';
+import { useSheetHeaders } from '@/components/editor/sheet-headers';
 import { QuestionField } from '@/components/form/question-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AppButton, Card, ChoiceButtons, LabeledInput, Row, SwitchRow } from '@/components/ui/controls';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { allQuestionIds, idFromLabel } from '@/form/edit';
+import { answerQuestions } from '@/form/logic';
+import { columnIndex, columnLetter } from '@/form/sheet-row';
 import { QUESTION_TYPES, type Answers, type FormSchema, type Question, type QuestionType } from '@/form/types';
 import { showMessage } from '@/services/dialogs';
 
@@ -156,14 +159,7 @@ export function QuestionEditor({ schema, question, isNew, onSave, onCancel }: Pr
                 onChange={(keepAfterSubmit) => setQ({ ...q, keepAfterSubmit })}
               />
               {schema.columnLayout ? (
-                <LabeledInput
-                  label="Spreadsheet column (letter, empty = a new column named by the id)"
-                  value={q.column ?? ''}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  placeholder="e.g. W"
-                  onChangeText={(text) => setQ({ ...q, column: text.toUpperCase().replace(/[^A-Z]/g, '') })}
-                />
+                <ColumnField schema={schema} questionId={question.id} column={q.column} onChange={(column) => setQ({ ...q, column })} />
               ) : null}
             </Card>
           ) : null}
@@ -187,6 +183,64 @@ export function QuestionEditor({ schema, question, isNew, onSave, onCancel }: Pr
         </ScrollView>
       </ThemedView>
     </Modal>
+  );
+}
+
+/** The question's spreadsheet column: typed as a letter, or picked by header name once the header row is loaded. */
+function ColumnField(props: {
+  schema: FormSchema;
+  questionId: string;
+  column: string | undefined;
+  onChange: (column: string | undefined) => void;
+}) {
+  const headers = useSheetHeaders();
+  const [picking, setPicking] = useState(false);
+  const header = (letter: string | undefined) => (letter ? headers?.[columnIndex(letter)] : undefined);
+  const usedBy = new Map(
+    answerQuestions(props.schema)
+      .filter((q) => q.column && q.id !== props.questionId)
+      .map((q) => [q.column!, q.label]),
+  );
+  const optionFor = (h: string, i: number) => {
+    const letter = columnLetter(i);
+    const owner = usedBy.get(letter);
+    return `${letter} · ${h || '(empty)'}${owner ? `  (used by “${owner}”)` : ''}`;
+  };
+
+  return (
+    <>
+      <LabeledInput
+        label="Spreadsheet column (letter, empty = a new column named by the id)"
+        value={props.column ?? ''}
+        autoCapitalize="characters"
+        autoCorrect={false}
+        placeholder="e.g. W"
+        onChangeText={(text) => props.onChange(text.toUpperCase().replace(/[^A-Z]/g, '') || undefined)}
+      />
+      {headers ? (
+        <>
+          <ThemedText type="small" themeColor="textSecondary">
+            {props.column ? `Column ${props.column} in the sheet: “${header(props.column) || '(empty)'}”` : 'No column yet'}
+          </ThemedText>
+          <AppButton title={picking ? 'Close list' : 'Pick from the sheet’s columns'} small onPress={() => setPicking(!picking)} />
+          {picking ? (
+            <ChoiceButtons
+              vertical
+              options={headers.map(optionFor)}
+              selected={props.column && headers[columnIndex(props.column)] !== undefined ? [optionFor(headers[columnIndex(props.column)], columnIndex(props.column))] : []}
+              onSelect={(option) => {
+                props.onChange(option.split(' · ')[0]);
+                setPicking(false);
+              }}
+            />
+          ) : null}
+        </>
+      ) : (
+        <ThemedText type="small" themeColor="textSecondary">
+          Tip: “Load columns from sheet” in the template’s Spreadsheet columns lets you pick by name.
+        </ThemedText>
+      )}
+    </>
   );
 }
 

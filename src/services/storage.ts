@@ -8,6 +8,8 @@ export const KEYS = {
   activeTemplateId: 'scouting/activeTemplateId',
   submissions: 'scouting/submissions',
   draft: 'scouting/draft',
+  /** The published "in use" template last applied, so a phone only switches once per change. */
+  publishedInUseId: 'scouting/publishedInUseId',
 } as const;
 
 export async function loadJson<T>(key: string): Promise<T | null> {

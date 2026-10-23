@@ -1,12 +1,15 @@
 import { useState } from 'react';
 
 import { ThemedText } from '@/components/themed-text';
-import { Card, LabeledInput, SwitchRow } from '@/components/ui/controls';
+import { AppButton, Card, LabeledInput, SwitchRow } from '@/components/ui/controls';
 import type { ColumnLayout } from '@/form/types';
 
 type Props = {
   layout: ColumnLayout | undefined;
   onChange: (layout: ColumnLayout | undefined) => void;
+  /** The tab's header row, once loaded. */
+  headers: string[] | undefined;
+  onLoadHeaders: () => void;
 };
 
 const letters = (text: string) => text.toUpperCase().replace(/[^A-Z]/g, '');
@@ -27,7 +30,7 @@ function parseConstants(text: string) {
 }
 
 /** Fixed spreadsheet columns, for a sheet whose layout other formulas already depend on. */
-export function ColumnLayoutEditor({ layout, onChange }: Props) {
+export function ColumnLayoutEditor({ layout, onChange, headers, onLoadHeaders }: Props) {
   // Raw text so typing "C=" isn't undone while editing.
   const [text, setText] = useState(constantsText(layout?.constants));
 
@@ -63,6 +66,12 @@ export function ColumnLayoutEditor({ layout, onChange }: Props) {
               onChange({ ...layout, constants: parseConstants(next) });
             }}
           />
+          <ThemedText type="small" themeColor="textSecondary">
+            {headers
+              ? `${headers.length} columns loaded. Open a question to pick its column by name.`
+              : 'Load the header row to pick each question’s column by name instead of typing letters.'}
+          </ThemedText>
+          <AppButton title={headers ? 'Reload columns from sheet' : 'Load columns from sheet'} onPress={onLoadHeaders} />
         </>
       ) : null}
     </Card>

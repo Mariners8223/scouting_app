@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ComponentRef } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { OpenForm } from '@/components/form/open-form';
 import { QuestionField } from '@/components/form/question-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -36,7 +37,8 @@ export default function ScoutScreen() {
   const safeArea = useSafeAreaInsets();
   const { loading, active, templates, setActive, addSubmission, submissions } = useTemplates();
   const [picking, setPicking] = useState(false);
-  const { pendingCount, syncing, syncNow } = useSync();
+  const [opening, setOpening] = useState(false);
+  const { pendingCount, syncing, syncNow, lastError } = useSync();
   const [answers, setAnswers] = useState<Answers>({});
   const [tabId, setTabId] = useState<string>();
   const [showMissing, setShowMissing] = useState(false);
@@ -124,9 +126,12 @@ export default function ScoutScreen() {
       );
       return;
     }
-    addSubmission(active, visibleAnswers(active, answers));
+    const saved = addSubmission(active, visibleAnswers(active, answers));
     resetForm(true);
-    showMessage('Saved', 'Saved on this device. It is sent to the spreadsheet as soon as there is internet.');
+    showMessage(
+      `Saved · key ${saved.id}`,
+      'Saved on this device. It is sent to the spreadsheet as soon as there is internet. Open it again any time with Open and this key.',
+    );
   };
 
   const clear = () =>
@@ -168,13 +173,21 @@ export default function ScoutScreen() {
                   ? `${pendingCount} waiting for internet · tap to send`
                   : 'All forms sent ✓'}
             </ThemedText>
+            {pendingCount && lastError ? (
+              <ThemedText type="small" style={{ color: theme.danger }} numberOfLines={2}>
+                {lastError}
+              </ThemedText>
+            ) : null}
           </Pressable>
         </View>
+        <AppButton title="Open" variant="ghost" small onPress={() => setOpening(true)} />
         {templates.length > 1 ? (
           <AppButton title="Switch" variant="ghost" small onPress={() => setPicking(true)} />
         ) : null}
         <AppButton title="Clear" variant="ghost" small onPress={clear} />
       </View>
+
+      {opening ? <OpenForm onClose={() => setOpening(false)} /> : null}
 
       <Modal visible={picking} transparent animationType="fade" onRequestClose={() => setPicking(false)}>
         <Pressable style={styles.backdrop} onPress={() => setPicking(false)}>

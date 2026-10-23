@@ -146,6 +146,7 @@ export const DEFAULT_SCHEMA: FormSchema = {
   year: 2026,
   version: 1,
   updatedAt: '2026-10-23T00:00:00.000Z',
+  spreadsheetId: '1YljG5_ezLNby8Q5_s2LO5AzavrguWDuhJ9ikbe-Y3-Y',
   sheetName: 'Table',
   columnLayout: { key: 'A', constants: { C: 'Mariners' } },
   sections: [

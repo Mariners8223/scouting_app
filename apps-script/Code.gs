@@ -1,5 +1,7 @@
 /**
- * Receives scouting forms from the app and appends them to the spreadsheet.
+ * The scouting app's server: receives forms, stores the published form templates and finds saved forms by key.
+ * It is deployed once and doesn't change between seasons: each template says which spreadsheet
+ * and tab its answers go to, and new templates are published from the app's Form Editor.
  *
  * Setup (once):
  * 1. Open the existing Apps Script project (the one whose web app URL is in src/config.ts),
@@ -7,37 +9,39 @@
  * 2. Deploy > Manage deployments > edit the existing web app > Version: New version > Deploy.
  *    (Keeping the same deployment keeps the URL that is in src/config.ts.)
  *    Execute as: Me. Who has access: Anyone.
- *    The account that deploys it needs edit access to the spreadsheet below.
+ *    The account that deploys it needs edit access to every spreadsheet the templates write to.
  *
- * Each template goes to its own tab (created if missing). A template with a fixed column
- * layout (the 2026 form) writes into the same columns the AppSheet table used, so the
- * dashboards that read that table keep working. Other templates get one column per
- * question, added as new questions appear. Existing columns are never moved, and a form
- * that was already saved (same id) is skipped, so phones can safely resend after a dropped connection.
+ * Actions (POST, JSON body with "action"):
+ * - submit:    append forms. A template with a fixed column layout writes into the columns it names
+ *              (the 2026 AppSheet table); other templates get one column per question.
+ *              A form that was already saved (same key) is skipped, so phones can safely resend.
+ * - templates: the published templates, for phones to download.
+ * - publish:   store a template for all phones (needs the editor code).
+ * - headers:   a tab's header row, for picking columns in the editor (needs the editor code).
+ * - find:      a saved form by its key.
+ *
+ * Forms are only written to and read from spreadsheets that a published template points to
+ * (or the home spreadsheet), so the public URL can't be used to reach other spreadsheets.
  */
 
-/**
- * The spreadsheet that receives the forms: the 2026 AppSheet data, which the dashboard
- * spreadsheet reads with IMPORTRANGE. Leave empty to use the spreadsheet this script is opened from.
- */
-const SPREADSHEET_ID = '1YljG5_ezLNby8Q5_s2LO5AzavrguWDuhJ9ikbe-Y3-Y';
+/** Where the published templates are kept (tab below), and where forms go when a template names no spreadsheet. */
+const HOME_SPREADSHEET_ID = '1YljG5_ezLNby8Q5_s2LO5AzavrguWDuhJ9ikbe-Y3-Y';
+const TEMPLATES_TAB = 'App Templates';
+/** SHA-256 of the editor code. The repo is public, so the code itself is not written here. */
+const EDITOR_CODE_SHA256 = 'c198adee3b92e835eb4e852ec7e7ddbb0c4e2e296129e1ac5aeb24ad3cab73c1';
+/** A cell holds at most 50,000 characters, so long templates are split over several cells. */
+const CHUNK = 45000;
+
+const ACTIONS = { submit: submit, templates: templates, publish: publish, headers: headers, find: find };
 
 function doPost(e) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000); // several phones may sync at the same moment
   try {
     const body = JSON.parse(e.postData.contents);
-    if (body.action !== 'submit') return json({ ok: false, error: 'Unknown action: ' + body.action });
-
-    const spreadsheet = SPREADSHEET_ID
-      ? SpreadsheetApp.openById(SPREADSHEET_ID)
-      : SpreadsheetApp.getActiveSpreadsheet();
-    const saved = [];
-    for (const item of body.submissions || []) {
-      appendSubmission(spreadsheet, item);
-      saved.push(item.id);
-    }
-    return json({ ok: true, saved: saved });
+    const action = ACTIONS[body.action];
+    if (!action) return json({ ok: false, error: 'Unknown action: ' + body.action });
+    return json(action(body));
   } catch (err) {
     return json({ ok: false, error: String(err) });
   } finally {
@@ -50,10 +54,28 @@ function doGet() {
   return json({ ok: true, message: 'Scouting sync is running' });
 }
 
+// ---------- submit ----------
+
+function submit(body) {
+  const allowed = allowedSpreadsheets();
+  const saved = [];
+  const errors = [];
+  for (const item of body.submissions || []) {
+    try {
+      appendSubmission(openAllowed(item.spreadsheetId, allowed), item);
+      saved.push(item.id);
+    } catch (err) {
+      // One bad form (e.g. a template that isn't published yet) doesn't block the others.
+      errors.push({ id: item.id, error: String(err) });
+    }
+  }
+  return { ok: true, saved: saved, errors: errors };
+}
+
 function appendSubmission(spreadsheet, item) {
   const sheet = spreadsheet.getSheetByName(item.sheet) || spreadsheet.insertSheet(item.sheet);
-  let headers = sheet.getLastColumn() > 0 ? sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0] : [];
-  if (alreadySaved(sheet, item, headers)) return;
+  let headers = headerRow(sheet);
+  if (findRow(sheet, headers, item.keyColumn, item.id)) return; // already saved
 
   const cells = item.cells || {};
   const named = item.named || {};
@@ -76,12 +98,126 @@ function appendSubmission(spreadsheet, item) {
   sheet.appendRow(values);
 }
 
-/** True when the sheet already has this form, found by id in the key column (or the "submissionId" header). */
-function alreadySaved(sheet, item, headers) {
-  const column = item.keyColumn ? columnIndex(item.keyColumn) : headers.indexOf('submissionId');
-  if (column < 0 || sheet.getLastRow() < 2) return false;
-  const ids = sheet.getRange(2, column + 1, sheet.getLastRow() - 1, 1).getValues().flat();
-  return ids.indexOf(item.id) >= 0;
+// ---------- templates ----------
+
+/** One row per published template: id, year, name, version, published at, in use, spreadsheet, JSON (split over cells). */
+function templatesSheet() {
+  const home = SpreadsheetApp.openById(HOME_SPREADSHEET_ID);
+  let sheet = home.getSheetByName(TEMPLATES_TAB);
+  if (!sheet) {
+    sheet = home.insertSheet(TEMPLATES_TAB);
+    sheet.appendRow(['Id', 'Year', 'Name', 'Version', 'Published at', 'In use', 'Spreadsheet', 'Template JSON']);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function publishedRows() {
+  const sheet = templatesSheet();
+  if (sheet.getLastRow() < 2) return [];
+  return sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+}
+
+function templates() {
+  const rows = publishedRows();
+  const inUse = rows.filter((r) => r[5] === 'Y')[0];
+  return {
+    ok: true,
+    templates: rows.map((r) => JSON.parse(r.slice(7).join(''))),
+    inUseId: inUse ? String(inUse[0]) : null,
+  };
+}
+
+function publish(body) {
+  checkCode(body.code);
+  const template = body.template;
+  if (!template || !template.id || !Array.isArray(template.sections)) throw new Error('Not a form template');
+  if (template.spreadsheetId) SpreadsheetApp.openById(template.spreadsheetId); // fails now if the script can't open it
+
+  const sheet = templatesSheet();
+  const text = JSON.stringify(template);
+  const chunks = [];
+  for (let i = 0; i < text.length; i += CHUNK) chunks.push(text.slice(i, i + CHUNK));
+  const row = [template.id, template.year, template.name, template.version, new Date(), body.inUse ? 'Y' : '', template.spreadsheetId || ''].concat(chunks);
+
+  const ids = publishedRows().map((r) => String(r[0]));
+  if (body.inUse && ids.length) sheet.getRange(2, 6, ids.length, 1).setValue(''); // only one template is in use
+  const at = ids.indexOf(template.id);
+  if (at >= 0) {
+    // Clear leftover chunks from a longer earlier version, then write the new one.
+    sheet.getRange(at + 2, 1, 1, Math.max(sheet.getLastColumn(), row.length)).clearContent();
+    sheet.getRange(at + 2, 1, 1, row.length).setValues([row.map(asText)]);
+  } else {
+    sheet.appendRow(row.map(asText));
+  }
+  return { ok: true };
+}
+
+// ---------- headers / find ----------
+
+function headers(body) {
+  checkCode(body.code);
+  const sheet = SpreadsheetApp.openById(body.spreadsheetId || HOME_SPREADSHEET_ID).getSheetByName(body.sheet);
+  if (!sheet) throw new Error('No tab named "' + body.sheet + '" in that spreadsheet');
+  return { ok: true, headers: headerRow(sheet).map(String) };
+}
+
+/** Looks for the key in each target (spreadsheet + tab + key column) and returns the first matching row. */
+function find(body) {
+  const key = String(body.key || '').trim().toLowerCase();
+  if (!key) throw new Error('No key');
+  const allowed = allowedSpreadsheets();
+  const targets = body.targets || [];
+  for (let t = 0; t < targets.length; t++) {
+    const target = targets[t];
+    if (!allowed[target.spreadsheetId || HOME_SPREADSHEET_ID]) continue;
+    const sheet = openAllowed(target.spreadsheetId, allowed).getSheetByName(target.sheet);
+    if (!sheet) continue;
+    const head = headerRow(sheet);
+    const row = findRow(sheet, head, target.keyColumn, key);
+    if (row) {
+      return { ok: true, found: true, target: t, headers: head.map(String), values: sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0] };
+    }
+  }
+  return { ok: true, found: false };
+}
+
+// ---------- helpers ----------
+
+/** Spreadsheets forms may go to: the home one and every published template's. */
+function allowedSpreadsheets() {
+  const allowed = {};
+  allowed[HOME_SPREADSHEET_ID] = true;
+  publishedRows().forEach((r) => {
+    if (r[6]) allowed[String(r[6])] = true;
+  });
+  return allowed;
+}
+
+function openAllowed(id, allowed) {
+  const spreadsheetId = id || HOME_SPREADSHEET_ID;
+  if (!allowed[spreadsheetId]) throw new Error('This spreadsheet is not used by a published template. Publish the template first.');
+  return SpreadsheetApp.openById(spreadsheetId);
+}
+
+function checkCode(code) {
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(code || ''), Utilities.Charset.UTF_8);
+  const hex = bytes.map((b) => ('0' + ((b + 256) % 256).toString(16)).slice(-2)).join('');
+  if (hex !== EDITOR_CODE_SHA256) throw new Error('Wrong code');
+}
+
+function headerRow(sheet) {
+  return sheet.getLastColumn() > 0 ? sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0] : [];
+}
+
+/** Row number (2+) whose key column holds this key, or 0. The key column is a letter, or else the "submissionId" header. */
+function findRow(sheet, headers, keyColumn, key) {
+  const column = keyColumn ? columnIndex(keyColumn) : headers.indexOf('submissionId');
+  if (column < 0 || sheet.getLastRow() < 2) return 0;
+  const ids = sheet.getRange(2, column + 1, sheet.getLastRow() - 1, 1).getValues();
+  const wanted = String(key).toLowerCase();
+  for (let i = 0; i < ids.length; i++) if (String(ids[i][0]).toLowerCase() === wanted) return i + 2;
+  return 0;
 }
 
 /** "A" -> 0, "AA" -> 26. */
@@ -99,6 +235,11 @@ function columnIndex(letter) {
 function cellValue(value) {
   if (value === undefined || value === null || value === '') return '';
   return typeof value === 'string' ? "'" + value : value;
+}
+
+/** Template cells: text as text (the JSON must never be read as a number or formula), dates as dates. */
+function asText(value) {
+  return value instanceof Date ? value : cellValue(value);
 }
 
 function json(data) {

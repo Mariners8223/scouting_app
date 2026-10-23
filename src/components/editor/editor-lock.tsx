@@ -1,17 +1,11 @@
-import * as Crypto from 'expo-crypto';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { AppButton, Card, LabeledInput } from '@/components/ui/controls';
-import { EDITOR_CODE_SHA256 } from '@/config';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-
-async function isEditorCode(code: string) {
-  const hash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, code);
-  return hash === EDITOR_CODE_SHA256;
-}
+import { isEditorCode } from '@/services/editor-code';
 
 /** Asks for the editor code before templates can be changed, so scouters can't edit the form by accident. */
 export function EditorLock({ onUnlock }: { onUnlock: () => void }) {

@@ -15,8 +15,17 @@ An FRC match-scouting app for team Mariners 8223, built with **Expo SDK 58 / Rea
 
 | Tab | File | What it does |
 | --- | --- | --- |
-| Scout | `src/app/index.tsx` | Fills in the active template. Dynamic tabs, required-answer check, draft kept while filling, **Switch** button to change template (no code needed), sync status ("N waiting for internet · tap to send"). |
-| Form Editor | `src/app/editor.tsx` | Locked behind an editor code. Lists templates by year; create, copy to a new year, delete, pick the one in use; edit tabs, questions, conditions and tab order. |
+| Scout | `src/app/index.tsx` | Fills in the active template. Dynamic tabs, required-answer check, draft kept while filling, **Switch** button to change template (no code needed), sync status ("N waiting for internet · tap to send", plus the reason when the sheet refused a form). After saving it shows the form's **key**; **Open** shows any saved form by key (see below). |
+| Form Editor | `src/app/editor.tsx` | Locked behind an editor code. Lists templates by year; create, copy to a new year, delete, pick the one in use; edit tabs, questions, conditions, tab order, spreadsheet link and columns. **Publish** (asks for the editor code again) sends a template to all phones; **Update** downloads the published ones now. |
+
+## A new season without code changes
+
+1. Make the season's spreadsheet and give the Apps Script account edit access to it.
+2. Form Editor → the last template → **Copy to new year**, then edit the questions.
+3. In the template: paste the **spreadsheet link**, set the tab, and (if other formulas depend on the layout) turn on **Fixed column layout**, press **Load columns from sheet** and pick each question's column by name.
+4. **Save**, then **Publish** with the editor code and "All phones scout with this form" on. Every phone downloads it the next time it is online and switches to it once.
+
+Nothing in the code or in `Code.gs` changes. The built-in 2026 form in `default-schema.ts` is only what a brand-new phone starts with before its first download.
 
 ## How the code is organised
 
@@ -25,9 +34,12 @@ src/form/types.ts            FormSchema / Section / Question / Submission types
 src/form/default-schema.ts   The built-in 2026 match form (from the scouting training slides)
 src/form/logic.ts            Tab ordering, show-if conditions, validation, {placeholder} labels
 src/form/edit.ts             Editor helpers (move, duplicate tab, ids from labels)
-src/context/templates-context.tsx  Templates per year + saved submissions (AsyncStorage)
-src/context/sync-context.tsx       Offline queue → Google Sheets
-src/services/sheets-api.ts   POST to the Apps Script web app
+src/form/sheet-row.ts        Saved form -> spreadsheet row (fixed columns or by id) and back (for Open)
+src/context/templates-context.tsx  Templates per year + saved submissions (AsyncStorage), applies published templates
+src/context/sync-context.tsx       Offline queue → Google Sheets, downloads published templates
+src/services/sheets-api.ts   Calls to the Apps Script web app (submit, templates, publish, headers, find)
+src/services/editor-code.ts  Editor code check + spreadsheet id from a link
+src/components/form/open-form.tsx  Open a saved form by key (this phone first, then the spreadsheet)
 src/services/storage.ts      AsyncStorage JSON wrapper (+ persistent storage request on web)
 src/services/dialogs(.web).ts  Alerts/confirms (RN Alert does nothing on web)
 src/components/form/question-field.tsx  Renders any question type
@@ -58,24 +70,35 @@ Role is several choices, like in AppSheet. The Info fields alliance and no-show 
 
 **It writes in the AppSheet layout.** The 2026 dashboards ("scouting master frontend for new scouting app 2026") read the AppSheet match table (`Table` tab of spreadsheet `1YljG5…`) through `IMPORTRANGE` into "Table Regular", and every formula there uses fixed column letters. So the 2026 template has a fixed column layout: each question goes to the AppSheet column with the same meaning (team → E, start position → I, active role → W, cycles → X, climb level → BH, fall/wobble/bump/disable → BN–BQ, collection → CD, …; the letters are in `default-schema.ts`), the form id goes to A (Key) and `Mariners` to C (From). Values are written the way AppSheet wrote them: text stays text (team "8223" too), numbers stay numbers, Y/N becomes TRUE/FALSE, several choices are joined with `" , "`. Alliance, no-show and the active-shift defense zone have no AppSheet column, so they go after column CD (with `submittedAt`), outside the range the dashboard imports.
 
-A built-in template that was never saved in the editor (version 1) is replaced by the app's newest version when the app starts, so test phones pick up these changes. A template edited on a phone keeps its own copy.
+A built-in template that was never saved in the editor (version 1) is replaced by the app's newest version when the app starts. After that, published templates win: a phone replaces its copy when the published version is newer, except a copy being edited on that phone with a higher version. A downloaded template that fails the editor's checks is ignored, so a broken publish never replaces a working form.
+
+## Published templates
+
+- **Publish** stores the template in the `App Templates` tab of the home spreadsheet (`HOME_SPREADSHEET_ID` in `Code.gs`, the AppSheet data spreadsheet `1YljG5…`): one row per template, with the JSON split over cells (a cell holds 50,000 characters). One template can be marked **in use**; phones switch to it once each time that changes, so a scouter can still pick another one afterwards.
+- Phones download the published templates when the app opens, when the internet comes back and at most every 5 minutes while open.
+- The template list shows each template's state: "only on this phone", "published", or "published vN, not this version".
+
+## Keys and opening a form
+
+- Every saved form gets an **8-letter key** (no 0/o/1/l/i), shown after saving and written to the key column (A in the 2026 table). Older forms keep their longer `sub_…` ids.
+- Scout → **Open**: type a key (any case), or tap one of the last 15 forms saved on the phone. Forms on the phone open without internet; otherwise the script looks for the key in the spreadsheet of every template on the phone and the answers are read back from the row (read-only view, tab by tab).
 
 ## Editor code
 
-The Form Editor asks for a code. The repo is public, so only the code's **SHA-256 hash** is stored (`EDITOR_CODE_SHA256` in `src/config.ts`). The plain code is not written anywhere in the repo. To change it, run the command in the comment in `src/config.ts` and paste the new hash. This stops accidental edits; it is not strong security.
+The Form Editor asks for a code, and **publishing and loading columns ask for it again**. The repo is public, so only the code's **SHA-256 hash** is stored (`EDITOR_CODE_SHA256` in `src/config.ts`, and the same hash in `Code.gs`). The plain code is not written anywhere in the repo. To change it, run the command in the comment in `src/config.ts` and paste the new hash in both files. In the app the code only stops accidental edits; for publishing and loading headers the **script checks it too**, so it can't be skipped by calling the URL directly.
 
 ## Sync to Google Sheets
 
 - All unsent forms go in **one request**. It retries when the network comes back, when the app is reopened, after every save and every 30 s, while the app is open (iOS does not let it run in the background).
 - Each template writes to its own tab (default: template name, can be changed in the editor; the 2026 template writes to `Table`). A form that was already saved (same id, in the Key column or the `submissionId` column) is skipped, so resending after a dropped connection doesn't duplicate rows. Text is written with a leading `'` so Sheets keeps it as text (and a comment starting with `=` is never a formula).
-- `apps-script/Code.gs` writes to the spreadsheet in `SPREADSHEET_ID` (the AppSheet data spreadsheet `1YljG5…`).
-- **Not done yet:** `Code.gs` must be pasted into the existing Apps Script project and deployed as a **new version of the existing web app deployment**, so the URL in `src/config.ts` stays the same. The account that deploys it needs edit access to `1YljG5…`. The current deployment is still the old brightness test, so **real syncing has not been tested against Google**. Tested so far: the app in a browser with the request captured (every answer in the right column), and `Code.gs` in Node against a fake sheet seeded with the real AppSheet header (values land in the right columns with the same types AppSheet used; resending doesn't duplicate).
+- Each form goes to its template's **spreadsheet link** (empty = the home spreadsheet). The script only writes to and reads from the home spreadsheet and spreadsheets of **published** templates, so the public URL can't reach other spreadsheets of the account; a form for an unpublished spreadsheet stays queued with "Publish the template first". One refused form doesn't block the others.
+- **Not done yet:** `Code.gs` must be pasted into the existing Apps Script project and deployed as a **new version of the existing web app deployment**, so the URL in `src/config.ts` stays the same. The account that deploys it needs edit access to `1YljG5…` (and to each later season's spreadsheet). The current deployment is still the old brightness test, so **nothing has been tested against real Google Sheets**. Tested so far: `Code.gs` in Node against fake spreadsheets seeded with the real AppSheet header (fixed columns and types, resend skipped, allow-list, publish with wrong/right code, a 100,000-character template round trip, headers, find + every answer read back identical), and the app in a browser with the script faked (download replaces the local copy, publish asks for the code and a wrong code sends nothing, column picker, key after saving, Open from the phone and from the sheet).
 
 ## PWA / deployment
 
 - `npm run build:web` → `expo export -p web` + Workbox service worker + `404.html`. Output in `dist/` (gitignored).
 - Hosted under the base path `/scouting_app` (`experiments.baseUrl` in `app.json`) → **https://mariners8223.github.io/scouting_app/**
-- **One-time setup still needed:** GitHub repo → Settings → Pages → Source: **GitHub Actions**. After that, every push to `master` deploys.
+- The repo is public and Pages is set to GitHub Actions, so every push to `master` deploys to the live app.
 - Tested locally: with the server shut down, the app and the editor still load from the service worker cache.
 - Things to tell scouters: open the site once **with internet** and add it to the home screen. Deleting the home-screen icon deletes unsent forms. New versions arrive the next time the app opens with internet.
 
@@ -94,11 +117,12 @@ The Form Editor asks for a code. The repo is public, so only the code's **SHA-25
 
 ## Known issues / ideas for next steps
 
-- **Templates are per device.** Editing a template on one phone does not update the other phones. Next step: publish templates to the spreadsheet (or a JSON file in the repo/site) and let phones download the current one.
-- Deploy and test `apps-script/Code.gs` against the real spreadsheet (send one test form, check the row in `Table` and that it shows up in the Team Dashboard).
+- Deploy and test `apps-script/Code.gs` against the real spreadsheet: send one test form, check the row in `Table` and that it shows up in the Team Dashboard, publish the template once, open the test form by key, then delete the test row.
+- Column letters are fixed per question: if someone inserts a column in the sheet, re-pick the columns in the editor and publish again.
+- Opening a form is read-only; correcting a form isn't possible yet.
 - A few dashboard formulas look for values AppSheet never wrote, so they show nothing with either AppSheet's or the app's data: climb level as `1`/`2` (both write `L1`/`L2`), "Did he defend" (AB/AT, no question fills it), active2 "How did he manage?" counted as `Non` (the app writes `No Defense`, like active 1). Fix those in the dashboard if they matter.
 - Once AppSheet stops being used, it may complain that the table has new columns (CE onward); that's expected.
-- Anyone who reads the public repo can find the Apps Script URL and post rows. Add a shared secret that the script checks.
+- Anyone who reads the public repo can find the Apps Script URL and post rows to the allowed spreadsheets, or read a form if they know its key. A shared secret wouldn't help much (it would be in the public app too).
 - No export/backup of local forms other than the sync (e.g. "share as CSV" or a QR code to pass data to another phone).
 - `src/hooks/use-color-scheme.web.ts` has one lint error (`set-state-in-effect`). It came from the Expo starter template and was left as is.
 - Optional: field-map images in questions (the AppSheet form shows the zone map next to "Where did he throw from").

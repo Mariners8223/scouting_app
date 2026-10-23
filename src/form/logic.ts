@@ -4,6 +4,14 @@ export function newId(prefix = 'id') {
   return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
+/** A short key for a saved form, easy to read out and type in (like AppSheet's 8-character keys). */
+export function newKey() {
+  const chars = 'abcdefghjkmnpqrstuvwxyz23456789'; // no 0/o, 1/l/i to mix up
+  let key = '';
+  for (let i = 0; i < 8; i++) key += chars[Math.floor(Math.random() * chars.length)];
+  return key;
+}
+
 export function isEmpty(value: AnswerValue | undefined) {
   return value === undefined || value === '' || (Array.isArray(value) && value.length === 0);
 }
