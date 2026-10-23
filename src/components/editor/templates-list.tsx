@@ -12,7 +12,7 @@ import { useTheme } from '@/hooks/use-theme';
 const BLANK = 'Blank';
 
 /** All saved templates, one or more per season. */
-export function TemplatesList({ onEdit }: { onEdit: (id: string) => void }) {
+export function TemplatesList({ onEdit }: { onEdit: (template: FormSchema) => void }) {
   const theme = useTheme();
   const { templates, active, setActive, createTemplate, deleteTemplate } = useTemplates();
   const [creating, setCreating] = useState(false);
@@ -37,9 +37,9 @@ export function TemplatesList({ onEdit }: { onEdit: (id: string) => void }) {
       Alert.alert('Missing details', 'Write a name and a year.');
       return;
     }
-    const id = createTemplate({ name: name.trim(), year: y, copyFromId: copyFrom });
+    const created = createTemplate({ name: name.trim(), year: y, copyFromId: copyFrom });
     setCreating(false);
-    onEdit(id);
+    onEdit(created);
   };
 
   const remove = (t: FormSchema) => {
@@ -103,7 +103,7 @@ export function TemplatesList({ onEdit }: { onEdit: (id: string) => void }) {
               ) : null}
             </Row>
             <Row>
-              <AppButton title="Edit" small variant="primary" onPress={() => onEdit(t.id)} />
+              <AppButton title="Edit" small variant="primary" onPress={() => onEdit(t)} />
               {!isActive ? <AppButton title="Use for scouting" small onPress={() => setActive(t.id)} /> : null}
               <AppButton title="Copy to new year" small onPress={() => startCreating(t)} />
               <AppButton title="Delete" small variant="danger" onPress={() => remove(t)} />

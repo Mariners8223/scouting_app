@@ -14,7 +14,7 @@ type TemplatesContextValue = {
   setActive: (id: string) => void;
   /** Returns the saved template with its new version number. */
   saveTemplate: (schema: FormSchema) => FormSchema;
-  createTemplate: (options: { name: string; year: number; copyFromId?: string }) => string;
+  createTemplate: (options: { name: string; year: number; copyFromId?: string }) => FormSchema;
   deleteTemplate: (id: string) => void;
   submissions: Submission[];
   addSubmission: (schema: FormSchema, answers: Answers) => void;
@@ -42,7 +42,13 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
       // First launch: start with the built-in season template.
       const initial = stored?.length ? stored : [clone(DEFAULT_SCHEMA)];
       setTemplates(initial.sort(byYear));
-      setActiveId(initial.some((t) => t.id === storedActive) ? storedActive! : initial[0].id);
+      if (initial.some((t) => t.id === storedActive)) {
+        setActiveId(storedActive!);
+      } else {
+        // Remember the fallback, so adding a newer template later doesn't silently switch scouting to it.
+        setActiveId(initial[0].id);
+        saveJson(KEYS.activeTemplateId, initial[0].id).catch((e) => console.error('Failed to save active template', e));
+      }
       setSubmissions(storedSubmissions ?? []);
       setLoading(false);
     })();
@@ -80,7 +86,7 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
         updatedAt: new Date().toISOString(),
       };
       persistTemplates([...templates, created]);
-      return created.id;
+      return created;
     },
     [templates, persistTemplates],
   );

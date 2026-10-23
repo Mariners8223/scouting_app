@@ -1,35 +1,39 @@
 import { useKeepAwake } from 'expo-keep-awake';
 import { useEffect, useRef, useState, type ComponentRef } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { QuestionField } from '@/components/form/question-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { AppButton, Row } from '@/components/ui/controls';
+import { AppButton, ChoiceButtons, Row } from '@/components/ui/controls';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTemplates } from '@/context/templates-context';
 import {
   answerQuestions,
   effectiveAnswer,
   isAnswered,
+  isEmpty,
   missingBySection,
   orderedSections,
   visibleAnswers,
   visibleQuestions,
 } from '@/form/logic';
-import type { Answers } from '@/form/types';
+import type { Answers, FormSchema } from '@/form/types';
 import { useTheme } from '@/hooks/use-theme';
 import { KEYS, loadJson, saveJson } from '@/services/storage';
 
 type Draft = { schemaId: string; answers: Answers };
+
+const templateLabel = (t: FormSchema) => `${t.year} · ${t.name}`;
 
 export default function ScoutScreen() {
   useKeepAwake(); // Stops the screen from sleeping while scouting
 
   const theme = useTheme();
   const safeArea = useSafeAreaInsets();
-  const { loading, active, addSubmission, submissions } = useTemplates();
+  const { loading, active, templates, setActive, addSubmission, submissions } = useTemplates();
+  const [picking, setPicking] = useState(false);
   const [answers, setAnswers] = useState<Answers>({});
   const [tabId, setTabId] = useState<string>();
   const [showMissing, setShowMissing] = useState(false);
@@ -128,6 +132,27 @@ export default function ScoutScreen() {
       { text: 'Clear', style: 'destructive', onPress: () => resetForm(false) },
     ]);
 
+  /** Changing the template needs no editor code; it only discards the form in progress. */
+  const switchTemplate = (id: string) => {
+    if (id === active.id) {
+      setPicking(false);
+      return;
+    }
+    const hasProgress = answerQuestions(active).some((q) => !q.keepAfterSubmit && !isEmpty(answers[q.id]));
+    const doSwitch = () => {
+      setPicking(false);
+      setActive(id);
+    };
+    if (!hasProgress) {
+      doSwitch();
+      return;
+    }
+    Alert.alert('Switch template?', 'The answers in the current form will be deleted.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Switch', style: 'destructive', onPress: doSwitch },
+    ]);
+  };
+
   const isLast = index === sections.length - 1;
 
   return (
@@ -139,8 +164,29 @@ export default function ScoutScreen() {
             {active.year} · {savedHere} saved on this device
           </ThemedText>
         </View>
+        {templates.length > 1 ? (
+          <AppButton title="Switch" variant="ghost" small onPress={() => setPicking(true)} />
+        ) : null}
         <AppButton title="Clear" variant="ghost" small onPress={clear} />
       </View>
+
+      <Modal visible={picking} transparent animationType="fade" onRequestClose={() => setPicking(false)}>
+        <Pressable style={styles.backdrop} onPress={() => setPicking(false)}>
+          <Pressable style={[styles.picker, { backgroundColor: theme.background }]}>
+            <ThemedText type="smallBold">Scout with template</ThemedText>
+            <ChoiceButtons
+              vertical
+              options={templates.map(templateLabel)}
+              selected={[templateLabel(active)]}
+              onSelect={(option) => {
+                const chosen = templates.find((t) => templateLabel(t) === option);
+                if (chosen) switchTemplate(chosen.id);
+              }}
+            />
+            <AppButton title="Cancel" onPress={() => setPicking(false)} />
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <ScrollView
         horizontal
@@ -227,6 +273,20 @@ const styles = StyleSheet.create({
     minHeight: 40,
     paddingHorizontal: Spacing.three,
     borderRadius: 20,
+  },
+  backdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: Spacing.four,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  picker: {
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
+    gap: Spacing.three,
+    padding: Spacing.three,
+    borderRadius: 16,
   },
   dot: {
     width: 8,

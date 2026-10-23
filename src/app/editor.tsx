@@ -24,10 +24,7 @@ export default function EditorScreen() {
   const saved = templates.find((t) => t.id === draft?.id);
   const dirty = !!draft && JSON.stringify(draft) !== JSON.stringify(saved);
 
-  const open = (id: string) => {
-    const template = templates.find((t) => t.id === id);
-    if (template) setDraft(JSON.parse(JSON.stringify(template)));
-  };
+  const open = (template: FormSchema) => setDraft(JSON.parse(JSON.stringify(template)));
 
   const save = () => {
     if (!draft) return;
