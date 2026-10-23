@@ -46,6 +46,8 @@ export type Question = {
   showIf?: Condition;
   /** Keep the answer for the next match (e.g. scouter name). Numbers go up by one step. */
   keepAfterSubmit?: boolean;
+  /** Spreadsheet column letter, e.g. "W". Only used when the template has a fixed column layout. */
+  column?: string;
 };
 
 export type Section = {
@@ -64,6 +66,18 @@ export type SectionOrderRule = {
   variants: Record<string, string[]>;
 };
 
+/**
+ * Writes answers into fixed spreadsheet columns instead of one column per question id,
+ * so a sheet built for another tool (the 2026 AppSheet table the dashboards read) keeps its layout.
+ * Questions without a column still go under a header with their id, after the fixed columns.
+ */
+export type ColumnLayout = {
+  /** Column that gets the submission id; a form the sheet already has is skipped. */
+  key: string;
+  /** Same value in every row, e.g. { C: 'Mariners' }. */
+  constants?: Record<string, string>;
+};
+
 /** A question template for one season. Every year gets its own. */
 export type FormSchema = {
   id: string;
@@ -75,6 +89,8 @@ export type FormSchema = {
   updatedAt: string;
   /** Spreadsheet tab that receives this form's answers. Defaults to the template name. */
   sheetName?: string;
+  /** Write to fixed columns (each question's `column`) instead of one column per question id. */
+  columnLayout?: ColumnLayout;
   sections: Section[];
   orderRule?: SectionOrderRule;
 };

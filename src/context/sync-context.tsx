@@ -3,9 +3,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { AppState } from 'react-native';
 
 import { useTemplates } from '@/context/templates-context';
-import { answerQuestions, answerToString } from '@/form/logic';
-import type { FormSchema, Submission } from '@/form/types';
-import { sendRows, type SheetRow } from '@/services/sheets-api';
+import { toSheetRow } from '@/form/sheet-row';
+import { sendRows } from '@/services/sheets-api';
 
 /**
  * Offline-first sync: forms are always saved on the device first, then sent to the
@@ -24,22 +23,6 @@ type SyncContextValue = {
 const SyncContext = createContext<SyncContextValue | null>(null);
 
 const RETRY_MS = 30000;
-const BASE_COLUMNS = ['submissionId', 'submittedAt', 'template', 'formVersion'];
-
-function toRow(submission: Submission, template: FormSchema | undefined): SheetRow {
-  const row: Record<string, string> = {
-    submissionId: submission.id,
-    submittedAt: submission.createdAt,
-    template: template ? `${template.year} ${template.name}` : submission.schemaId,
-    formVersion: String(submission.schemaVersion),
-  };
-  for (const [id, value] of Object.entries(submission.answers)) row[id] = answerToString(value);
-  return {
-    sheet: submission.sheetName || template?.sheetName || template?.name || 'Scouting',
-    columns: [...BASE_COLUMNS, ...(template ? answerQuestions(template).map((q) => q.id) : Object.keys(submission.answers))],
-    row,
-  };
-}
 
 export function SyncProvider({ children }: { children: ReactNode }) {
   const { loading, submissions, templates, markSynced } = useTemplates();
@@ -61,7 +44,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     busy.current = true;
     setSyncing(true);
     try {
-      const rows = batch.map((s) => toRow(s, latest.current.templates.find((t) => t.id === s.schemaId)));
+      const rows = batch.map((s) => toSheetRow(s, latest.current.templates.find((t) => t.id === s.schemaId)));
       markSynced(await sendRows(rows));
       setLastSyncAt(new Date().toISOString());
       setLastError(undefined);

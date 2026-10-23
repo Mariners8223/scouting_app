@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { ColumnLayoutEditor } from '@/components/editor/column-layout-editor';
 import { OrderRuleEditor } from '@/components/editor/order-rule-editor';
 import { SectionEditor } from '@/components/editor/section-editor';
 import { ThemedText } from '@/components/themed-text';
@@ -116,6 +117,11 @@ export function TemplateEditor({ draft, onChange }: Props) {
       <AppButton title="+ Add tab" variant="primary" onPress={addSection} />
 
       <OrderRuleEditor schema={draft} onChange={(orderRule) => onChange({ ...draft, orderRule })} />
+
+      <ColumnLayoutEditor
+        layout={draft.columnLayout}
+        onChange={(columnLayout) => onChange({ ...draft, columnLayout })}
+      />
     </View>
   );
 }

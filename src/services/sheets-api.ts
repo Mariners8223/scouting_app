@@ -1,13 +1,5 @@
 import { WEB_APP_URL } from '@/config';
-
-/** One form to append to a tab of the scouting spreadsheet. */
-export type SheetRow = {
-  /** Tab name in the spreadsheet; created if missing. */
-  sheet: string;
-  /** Preferred column order; columns the sheet already has are never moved. */
-  columns: string[];
-  row: Record<string, string>;
-};
+import type { SheetRow } from '@/form/sheet-row';
 
 const TIMEOUT_MS = 20000;
 

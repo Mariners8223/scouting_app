@@ -45,15 +45,20 @@ workbox-config.js            Service worker that precaches the whole web build
 - **Question types:** `enum` (one choice), `enumList` (several), `yesNo`, `number` (counter with min/max/step), `text`, `longText`, `header` (title only).
 - **Per question:** id (also the spreadsheet column name), label, description, required, options, **show only if** (another question equals / doesn't equal a value), and **keep for next match** (scouter name stays; match number goes up by one after saving).
 - **Labels can include answers:** `Defense on {team}` shows the team number that was entered.
-- **Tab order rule:** the order of the tabs can depend on an answer. In 2026: if the robot's alliance **won Auto**, the order is Inactive → Active → Inactive 2 → Active 2; if it lost, Active comes first.
+- **Tab order rule:** the order of the tabs can depend on an answer. In 2026: if the robot's alliance **won Auto** ("Did his alliance win Auto?" = Y), the order is Inactive → Active → Inactive 2 → Active 2; if it lost, Active comes first.
+- **Fixed column layout (optional, per template):** instead of one column per question id, each question can have a spreadsheet **column letter**, plus a column for the form id and fixed values (e.g. `C=Mariners`). Set in the editor: template → "Spreadsheet columns", and the column field in each question. Questions without a letter still get their own column (named by id) after the fixed ones.
 - **Tabs** can also be conditional (in 2026, everything except Info/General is hidden when "Robot didn't show up" = Y).
 - **Templates per year:** "Copy to new year" duplicates a template as the starting point for the next season. Each saved form records its template id and version.
 
 ### The 2026 default form
 
 Built from the "הכשרות סקאוטינג יבש 2026" training slides (AppSheet screenshots):
-Info, Auto (start position, collection, shot zones 1–9, end zone, tower position/success, who won Auto), Active / Inactive / Active 2 / Inactive 2 (role, cycles, defense on him, his defense, passing/rolling fuel), Endgame (climb time, level, position, success), General (collection quality, shoot while collecting, fall, wobble, stuck on bump, disabled, stuck on fuel, comments in Hebrew, defense description).
-**The Info tab fields were guessed** (scouter, match, team, alliance, no-show) because the slides don't show them.
+Info (scouter, event, match, team, alliance, no-show), Auto (start position, collection, shot zones 1–9, end zone, tower position/success, did his alliance win Auto), Active / Active 2 (roles, cycles, defense on him, fight or flight, his defense, serving + rolled from/to), Inactive / Inactive 2 (roles, his defense, zone, description), Endgame (climb time, level, position, success), General (collection quality, shoot while collecting, fall, wobble, stuck on bump, disabled, stuck on fuel, comments in Hebrew, cycle description, serving / defense / defense-on-him comments).
+Role is several choices, like in AppSheet. The Info fields alliance and no-show were guessed (the slides don't show them).
+
+**It writes in the AppSheet layout.** The 2026 dashboards ("scouting master frontend for new scouting app 2026") read the AppSheet match table (`Table` tab of spreadsheet `1YljG5…`) through `IMPORTRANGE` into "Table Regular", and every formula there uses fixed column letters. So the 2026 template has a fixed column layout: each question goes to the AppSheet column with the same meaning (team → E, start position → I, active role → W, cycles → X, climb level → BH, fall/wobble/bump/disable → BN–BQ, collection → CD, …; the letters are in `default-schema.ts`), the form id goes to A (Key) and `Mariners` to C (From). Values are written the way AppSheet wrote them: text stays text (team "8223" too), numbers stay numbers, Y/N becomes TRUE/FALSE, several choices are joined with `" , "`. Alliance, no-show and the active-shift defense zone have no AppSheet column, so they go after column CD (with `submittedAt`), outside the range the dashboard imports.
+
+A built-in template that was never saved in the editor (version 1) is replaced by the app's newest version when the app starts, so test phones pick up these changes. A template edited on a phone keeps its own copy.
 
 ## Editor code
 
@@ -62,8 +67,9 @@ The Form Editor asks for a code. The repo is public, so only the code's **SHA-25
 ## Sync to Google Sheets
 
 - All unsent forms go in **one request**. It retries when the network comes back, when the app is reopened, after every save and every 30 s, while the app is open (iOS does not let it run in the background).
-- Each template writes to its own tab (default: template name, can be changed in the editor). Columns are created automatically; a form that was already saved (same `submissionId`) is skipped, so resending after a dropped connection doesn't duplicate rows.
-- **Not done yet:** `apps-script/Code.gs` must be pasted into the spreadsheet (Extensions → Apps Script) and deployed as a **new version of the existing web app deployment**, so the URL in `src/config.ts` stays the same. The current deployment is still the old brightness test, so **real syncing has not been tested end to end**. The app logic was tested in a browser with a simulated connection.
+- Each template writes to its own tab (default: template name, can be changed in the editor; the 2026 template writes to `Table`). A form that was already saved (same id, in the Key column or the `submissionId` column) is skipped, so resending after a dropped connection doesn't duplicate rows. Text is written with a leading `'` so Sheets keeps it as text (and a comment starting with `=` is never a formula).
+- `apps-script/Code.gs` writes to the spreadsheet in `SPREADSHEET_ID` (the AppSheet data spreadsheet `1YljG5…`).
+- **Not done yet:** `Code.gs` must be pasted into the existing Apps Script project and deployed as a **new version of the existing web app deployment**, so the URL in `src/config.ts` stays the same. The account that deploys it needs edit access to `1YljG5…`. The current deployment is still the old brightness test, so **real syncing has not been tested against Google**. Tested so far: the app in a browser with the request captured (every answer in the right column), and `Code.gs` in Node against a fake sheet seeded with the real AppSheet header (values land in the right columns with the same types AppSheet used; resending doesn't duplicate).
 
 ## PWA / deployment
 
@@ -89,7 +95,9 @@ The Form Editor asks for a code. The repo is public, so only the code's **SHA-25
 ## Known issues / ideas for next steps
 
 - **Templates are per device.** Editing a template on one phone does not update the other phones. Next step: publish templates to the spreadsheet (or a JSON file in the repo/site) and let phones download the current one.
-- Deploy and test `apps-script/Code.gs` against the real spreadsheet.
+- Deploy and test `apps-script/Code.gs` against the real spreadsheet (send one test form, check the row in `Table` and that it shows up in the Team Dashboard).
+- A few dashboard formulas look for values AppSheet never wrote, so they show nothing with either AppSheet's or the app's data: climb level as `1`/`2` (both write `L1`/`L2`), "Did he defend" (AB/AT, no question fills it), active2 "How did he manage?" counted as `Non` (the app writes `No Defense`, like active 1). Fix those in the dashboard if they matter.
+- Once AppSheet stops being used, it may complain that the table has new columns (CE onward); that's expected.
 - Anyone who reads the public repo can find the Apps Script URL and post rows. Add a shared secret that the script checks.
 - No export/backup of local forms other than the sync (e.g. "share as CSV" or a QR code to pass data to another phone).
 - `src/hooks/use-color-scheme.web.ts` has one lint error (`set-state-in-effect`). It came from the Expo starter template and was left as is.

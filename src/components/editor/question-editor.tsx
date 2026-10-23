@@ -52,6 +52,7 @@ export function QuestionEditor({ schema, question, isNew, onSave, onCancel }: Pr
     step: q.type === 'number' ? parseNumber(stepText) : undefined,
     required: answers ? q.required : undefined,
     keepAfterSubmit: answers ? q.keepAfterSubmit : undefined,
+    column: answers && schema.columnLayout ? q.column || undefined : undefined,
   };
 
   const save = () => {
@@ -60,6 +61,7 @@ export function QuestionEditor({ schema, question, isNew, onSave, onCancel }: Pr
     if (!/^\w+$/.test(built.id)) problems.push('The id may only use English letters, numbers and _.');
     if (takenIds.has(built.id)) problems.push(`The id "${built.id}" is already used by another question.`);
     if (hasOptions && !built.options?.length) problems.push('Add at least one option.');
+    if (built.column && !/^[A-Z]{1,3}$/.test(built.column)) problems.push('The column must be letters, e.g. W or AC.');
     if (built.showIf && (!built.showIf.questionId || !built.showIf.value)) {
       problems.push('Finish the "show only if" condition or turn it off.');
     }
@@ -153,6 +155,16 @@ export function QuestionEditor({ schema, question, isNew, onSave, onCancel }: Pr
                 value={!!q.keepAfterSubmit}
                 onChange={(keepAfterSubmit) => setQ({ ...q, keepAfterSubmit })}
               />
+              {schema.columnLayout ? (
+                <LabeledInput
+                  label="Spreadsheet column (letter, empty = a new column named by the id)"
+                  value={q.column ?? ''}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  placeholder="e.g. W"
+                  onChangeText={(text) => setQ({ ...q, column: text.toUpperCase().replace(/[^A-Z]/g, '') })}
+                />
+              ) : null}
             </Card>
           ) : null}
 

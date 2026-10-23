@@ -113,5 +113,23 @@ export function schemaProblems(schema: FormSchema) {
   if (schema.orderRule && !ids.has(schema.orderRule.questionId)) {
     problems.push('The tab order depends on a question that no longer exists');
   }
+  problems.push(...columnProblems(schema));
+  return problems;
+}
+
+/** Fixed column layout: every letter valid and used by only one thing. */
+function columnProblems(schema: FormSchema) {
+  const layout = schema.columnLayout;
+  if (!layout) return [];
+  const problems: string[] = [];
+  const owners = new Map<string, string>();
+  const claim = (column: string, owner: string) => {
+    if (!/^[A-Z]{1,3}$/.test(column)) problems.push(`${owner}: "${column}" is not a column letter`);
+    else if (owners.has(column)) problems.push(`Column ${column} is used by both ${owners.get(column)} and ${owner}`);
+    owners.set(column, owner);
+  };
+  claim(layout.key, 'the form id');
+  for (const column of Object.keys(layout.constants ?? {})) claim(column, `the fixed value in ${column}`);
+  for (const q of answerQuestions(schema)) if (q.column) claim(q.column, `"${q.label}"`);
   return problems;
 }

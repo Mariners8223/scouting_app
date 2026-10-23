@@ -45,8 +45,11 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
         loadJson<string>(KEYS.activeTemplateId),
         loadJson<Submission[]>(KEYS.submissions),
       ]);
-      // First launch: start with the built-in season template.
-      const initial = stored?.length ? stored : [clone(DEFAULT_SCHEMA)];
+      // First launch: start with the built-in season template. A built-in copy nobody saved
+      // in the editor yet (still version 1) is replaced by the app's newest version of it.
+      const initial = stored?.length
+        ? stored.map((t) => (t.id === DEFAULT_SCHEMA.id && t.version === 1 ? clone(DEFAULT_SCHEMA) : t))
+        : [clone(DEFAULT_SCHEMA)];
       setTemplates(initial.sort(byYear));
       if (initial.some((t) => t.id === storedActive)) {
         setActiveId(storedActive!);
