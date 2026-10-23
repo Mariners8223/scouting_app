@@ -1,136 +1,249 @@
-import Slider from '@react-native-community/slider';
-import * as Brightness from 'expo-brightness';
 import { useKeepAwake } from 'expo-keep-awake';
-import { useEffect, useRef, useState } from 'react';
-import { Button, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState, type ComponentRef } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// 1. Google Apps Script Web App Endpoint
-const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxfA8ZqY-I_bwsIrxuvhZ58LgjIjc5ZZm7SqyCpWtwHgY2B_Kzmo4Bp_r8SVsoOs44/exec';
+import { QuestionField } from '@/components/form/question-field';
+import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
+import { AppButton, Row } from '@/components/ui/controls';
+import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useTemplates } from '@/context/templates-context';
+import {
+  answerQuestions,
+  effectiveAnswer,
+  isAnswered,
+  missingBySection,
+  orderedSections,
+  visibleAnswers,
+  visibleQuestions,
+} from '@/form/logic';
+import type { Answers } from '@/form/types';
+import { useTheme } from '@/hooks/use-theme';
+import { KEYS, loadJson, saveJson } from '@/services/storage';
 
-export default function App() {
-  useKeepAwake(); // Stops the screen from sleeping while app is open
+type Draft = { schemaId: string; answers: Answers };
 
-  const [isOn, setIsOn] = useState(false);
-  const [level, setLevel] = useState(1);
-  const originalBrightness = useRef<number | null>(null);
+export default function ScoutScreen() {
+  useKeepAwake(); // Stops the screen from sleeping while scouting
 
-  // Request permissions and store original device brightness
+  const theme = useTheme();
+  const safeArea = useSafeAreaInsets();
+  const { loading, active, addSubmission, submissions } = useTemplates();
+  const [answers, setAnswers] = useState<Answers>({});
+  const [tabId, setTabId] = useState<string>();
+  const [showMissing, setShowMissing] = useState(false);
+  /** Which template the answers belong to; the form waits until it matches the active one. */
+  const [loadedFor, setLoadedFor] = useState<string>();
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+  const activeId = active?.id;
+  const draftLoaded = !!activeId && loadedFor === activeId;
+
+  // Restore an unfinished form (e.g. after the app was closed mid-match).
   useEffect(() => {
-    (async () => {
-      const { status } = await Brightness.requestPermissionsAsync();
-      if (status === 'granted') {
-        originalBrightness.current = await Brightness.getBrightnessAsync();
-      }
-    })();
-  }, []);
+    if (!activeId) return;
+    let cancelled = false;
+    loadJson<Draft>(KEYS.draft).then((draft) => {
+      if (cancelled) return;
+      setAnswers(draft?.schemaId === activeId ? draft.answers : {});
+      setTabId(undefined);
+      setShowMissing(false);
+      setLoadedFor(activeId);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId]);
 
-  // Update screen brightness on toggle/slider change
-  useEffect(() => {
-    (async () => {
-      try {
-        if (isOn) {
-          await Brightness.setBrightnessAsync(level);
-        } else if (originalBrightness.current !== null) {
-          await Brightness.setBrightnessAsync(originalBrightness.current);
-        }
-      } catch (e) {
-        console.error(e);
-      }
-    })();
-  }, [isOn, level]);
+  if (loading || !draftLoaded || !active) {
+    return (
+      <ThemedView style={styles.center}>
+        {loading || active ? (
+          <ActivityIndicator />
+        ) : (
+          <ThemedText>No form template yet. Create one in the Form Editor tab.</ThemedText>
+        )}
+      </ThemedView>
+    );
+  }
 
-  // 2. Fetch function to post payload to Google Sheets
-  const sendData = async (payload: object) => {
-    try {
-      const response = await fetch(WEB_APP_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(payload),
-      });
-      const result = await response.json();
-      console.log('Response:', result);
-    } catch (error) {
-      console.error('Error sending data:', error);
-    }
+  const sections = orderedSections(active, answers);
+  if (!sections.length) {
+    return (
+      <ThemedView style={styles.center}>
+        <ThemedText>This template has no tabs yet. Add some in the Form Editor tab.</ThemedText>
+      </ThemedView>
+    );
+  }
+
+  const index = Math.max(0, sections.findIndex((s) => s.id === tabId));
+  const section = sections[index];
+  const missing = missingBySection(active, answers);
+  const missingSectionIds = new Set(missing.map((m) => m.section.id));
+  const savedHere = submissions.filter((s) => s.schemaId === active.id).length;
+
+  const updateAnswers = (next: Answers) => {
+    setAnswers(next);
+    saveJson(KEYS.draft, { schemaId: active.id, answers: next } satisfies Draft).catch((e) =>
+      console.error('Failed to save draft', e),
+    );
   };
 
-  // 3. UI JSX layout (All React components must live inside return)
+  const goTo = (id: string) => {
+    setTabId(id);
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  };
+
+  /** Empties the form but keeps answers marked "keep after submit" (match number goes up after a save). */
+  const resetForm = (advance: boolean) => {
+    const kept: Answers = {};
+    for (const q of answerQuestions(active)) {
+      if (!q.keepAfterSubmit) continue;
+      const value = effectiveAnswer(q, answers);
+      kept[q.id] = advance && q.type === 'number' && typeof value === 'number' ? value + (q.step || 1) : value;
+    }
+    updateAnswers(kept);
+    setShowMissing(false);
+    goTo(sections[0].id);
+  };
+
+  const submit = () => {
+    if (missing.length) {
+      setShowMissing(true);
+      goTo(missing[0].section.id);
+      Alert.alert(
+        'Some answers are missing',
+        missing.map((m) => `${m.section.title}: ${m.questions.length}`).join('\n'),
+      );
+      return;
+    }
+    addSubmission(active, visibleAnswers(active, answers));
+    resetForm(true);
+    Alert.alert('Saved', 'The form was saved on this device.');
+  };
+
+  const clear = () =>
+    Alert.alert('Clear form?', 'All answers in this form will be deleted.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Clear', style: 'destructive', onPress: () => resetForm(false) },
+    ]);
+
+  const isLast = index === sections.length - 1;
+
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
-
-      <Text style={styles.title}>Brightness Controller</Text>
-
-      <Pressable 
-        style={[styles.toggleBtn, isOn && styles.toggleBtnActive]} 
-        onPress={() => setIsOn(!isOn)}
-      >
-        <Text style={styles.toggleText}>{isOn ? 'LIGHT ON' : 'LIGHT OFF'}</Text>
-      </Pressable>
-
-      <View style={styles.sliderBox}>
-        <Text style={styles.label}>Brightness: {Math.round(level * 100)}%</Text>
-        <Slider
-          style={{ width: 250, height: 40 }}
-          minimumValue={0}
-          maximumValue={1}
-          value={level}
-          onValueChange={setLevel}
-          minimumTrackTintColor="#007AFF"
-          maximumTrackTintColor="#555"
-        />
+    <ThemedView style={[styles.container, { paddingTop: safeArea.top }]}>
+      <View style={styles.header}>
+        <View style={{ flex: 1 }}>
+          <ThemedText type="smallBold">{active.name}</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            {active.year} · {savedHere} saved on this device
+          </ThemedText>
+        </View>
+        <AppButton title="Clear" variant="ghost" small onPress={clear} />
       </View>
 
-      {/* Button placed properly inside JSX */}
-      <View style={styles.actionBox}>
-        <Button 
-          title="Save State to Sheets" 
-          onPress={() => sendData({ status: isOn, brightness: level })} 
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.tabsScroll}
+        contentContainerStyle={styles.tabs}>
+        {sections.map((s) => {
+          const selected = s.id === section.id;
+          return (
+            <Pressable
+              key={s.id}
+              accessibilityRole="tab"
+              accessibilityState={{ selected }}
+              onPress={() => goTo(s.id)}
+              style={[styles.tab, { backgroundColor: selected ? theme.accent : theme.backgroundElement }]}>
+              <ThemedText type="smallBold" style={{ color: selected ? theme.onAccent : theme.text }}>
+                {s.title}
+              </ThemedText>
+              {showMissing && missingSectionIds.has(s.id) ? (
+                <View style={[styles.dot, { backgroundColor: theme.danger }]} />
+              ) : null}
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={styles.content}>
+        {visibleQuestions(section, answers).map((q) => (
+          <QuestionField
+            key={q.id}
+            question={q}
+            answers={answers}
+            onChange={(value) => updateAnswers({ ...answers, [q.id]: value })}
+            showMissing={showMissing && !isAnswered(q, answers)}
+          />
+        ))}
+      </ScrollView>
+
+      <Row style={[styles.footer, { paddingBottom: safeArea.bottom + BottomTabInset + Spacing.two }]}>
+        <AppButton
+          title="Prev"
+          disabled={index === 0}
+          onPress={() => goTo(sections[index - 1].id)}
+          style={{ flex: 1 }}
         />
-      </View>
-    </View>
+        {isLast ? (
+          <AppButton title="Save" variant="primary" onPress={submit} style={{ flex: 2 }} />
+        ) : (
+          <AppButton title="Next" variant="primary" onPress={() => goTo(sections[index + 1].id)} style={{ flex: 2 }} />
+        )}
+      </Row>
+    </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#121212',
+  },
+  center: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
+    padding: Spacing.four,
   },
-  title: {
-    color: '#fff',
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginBottom: 40,
-  },
-  toggleBtn: {
-    backgroundColor: '#333',
-    paddingVertical: 15,
-    paddingHorizontal: 40,
-    borderRadius: 12,
-    marginBottom: 30,
-  },
-  toggleBtnActive: {
-    backgroundColor: '#007AFF',
-  },
-  toggleText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  sliderBox: {
+  header: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 40,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
   },
-  label: {
-    color: '#ccc',
-    fontSize: 14,
-    marginBottom: 10,
+  tabsScroll: {
+    flexGrow: 0,
   },
-  actionBox: {
-    marginTop: 10,
+  tabs: {
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    paddingBottom: Spacing.two,
+  },
+  tab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+    minHeight: 40,
+    paddingHorizontal: Spacing.three,
+    borderRadius: 20,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  content: {
+    gap: Spacing.four,
+    padding: Spacing.three,
+    paddingBottom: Spacing.six,
+    width: '100%',
+    maxWidth: MaxContentWidth,
+    alignSelf: 'center',
+  },
+  footer: {
+    flexWrap: 'nowrap',
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.two,
   },
 });
