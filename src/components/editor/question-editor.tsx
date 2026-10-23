@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Modal, ScrollView, StyleSheet, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ConditionEditor } from '@/components/editor/condition-editor';
@@ -10,6 +10,7 @@ import { AppButton, Card, ChoiceButtons, LabeledInput, Row, SwitchRow } from '@/
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { allQuestionIds, idFromLabel } from '@/form/edit';
 import { QUESTION_TYPES, type Answers, type FormSchema, type Question, type QuestionType } from '@/form/types';
+import { showMessage } from '@/services/dialogs';
 
 type Props = {
   schema: FormSchema;
@@ -63,7 +64,7 @@ export function QuestionEditor({ schema, question, isNew, onSave, onCancel }: Pr
       problems.push('Finish the "show only if" condition or turn it off.');
     }
     if (problems.length) {
-      Alert.alert('Can’t save yet', problems.join('\n'));
+      showMessage('Can’t save yet', problems.join('\n'));
       return;
     }
     onSave(built);

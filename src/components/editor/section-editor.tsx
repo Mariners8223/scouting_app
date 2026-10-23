@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { ConditionEditor } from '@/components/editor/condition-editor';
 import { QuestionEditor } from '@/components/editor/question-editor';
@@ -9,6 +9,7 @@ import { Spacing } from '@/constants/theme';
 import { allQuestionIds, moveItem, uniqueId } from '@/form/edit';
 import { QUESTION_TYPES, type FormSchema, type Question, type Section } from '@/form/types';
 import { useTheme } from '@/hooks/use-theme';
+import { confirmAction } from '@/services/dialogs';
 
 type Props = {
   schema: FormSchema;
@@ -37,10 +38,7 @@ export function SectionEditor({ schema, section, onChange }: Props) {
   };
 
   const remove = (q: Question, index: number) =>
-    Alert.alert('Delete question?', q.label, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => setQuestions(questions.filter((_, i) => i !== index)) },
-    ]);
+    confirmAction('Delete question?', q.label, 'Delete', () => setQuestions(questions.filter((_, i) => i !== index)));
 
   const saveEditing = (question: Question) => {
     if (!editing) return;

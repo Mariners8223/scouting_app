@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { OrderRuleEditor } from '@/components/editor/order-rule-editor';
 import { SectionEditor } from '@/components/editor/section-editor';
@@ -10,6 +10,7 @@ import { duplicateSection, moveItem } from '@/form/edit';
 import { newId, schemaProblems } from '@/form/logic';
 import type { FormSchema, Section } from '@/form/types';
 import { useTheme } from '@/hooks/use-theme';
+import { confirmAction } from '@/services/dialogs';
 
 type Props = {
   draft: FormSchema;
@@ -44,10 +45,12 @@ export function TemplateEditor({ draft, onChange }: Props) {
   };
 
   const removeSection = (section: Section) =>
-    Alert.alert('Delete tab?', `“${section.title}” and its ${section.questions.length} questions will be deleted.`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => setSections(sections.filter((s) => s.id !== section.id)) },
-    ]);
+    confirmAction(
+      'Delete tab?',
+      `“${section.title}” and its ${section.questions.length} questions will be deleted.`,
+      'Delete',
+      () => setSections(sections.filter((s) => s.id !== section.id)),
+    );
 
   const problems = schemaProblems(draft);
 

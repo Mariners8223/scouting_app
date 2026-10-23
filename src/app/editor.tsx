@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EditorLock } from '@/components/editor/editor-lock';
@@ -12,6 +12,7 @@ import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTemplates } from '@/context/templates-context';
 import { schemaProblems } from '@/form/logic';
 import type { FormSchema } from '@/form/types';
+import { confirmAction, showMessage } from '@/services/dialogs';
 
 export default function EditorScreen() {
   const safeArea = useSafeAreaInsets();
@@ -30,7 +31,7 @@ export default function EditorScreen() {
     if (!draft) return;
     const problems = schemaProblems(draft);
     if (problems.length) {
-      Alert.alert('Can’t save yet', problems.join('\n'));
+      showMessage('Can’t save yet', problems.join('\n'));
       return;
     }
     setDraft(saveTemplate(draft));
@@ -41,10 +42,9 @@ export default function EditorScreen() {
       setDraft(undefined);
       return;
     }
-    Alert.alert('Discard changes?', 'Your changes to this template were not saved.', [
-      { text: 'Keep editing', style: 'cancel' },
-      { text: 'Discard', style: 'destructive', onPress: () => setDraft(undefined) },
-    ]);
+    confirmAction('Discard changes?', 'Your changes to this template were not saved.', 'Discard', () =>
+      setDraft(undefined),
+    );
   };
 
   return (

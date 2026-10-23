@@ -26,7 +26,10 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "output": "server",
+      "output": "single",
+      "name": "Mariners Scouting",
+      "shortName": "Scouting",
+      "themeColor": "#208AEF",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -43,7 +46,8 @@
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": true,
+      "baseUrl": "/scouting_app"
     }
   }
 }

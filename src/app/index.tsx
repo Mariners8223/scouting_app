@@ -1,6 +1,6 @@
 import { useKeepAwake } from 'expo-keep-awake';
 import { useEffect, useRef, useState, type ComponentRef } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { QuestionField } from '@/components/form/question-field';
@@ -23,6 +23,7 @@ import {
 import type { Answers, FormSchema } from '@/form/types';
 import { useTheme } from '@/hooks/use-theme';
 import { KEYS, loadJson, saveJson } from '@/services/storage';
+import { confirmAction, showMessage } from '@/services/dialogs';
 
 type Draft = { schemaId: string; answers: Answers };
 
@@ -117,7 +118,7 @@ export default function ScoutScreen() {
     if (missing.length) {
       setShowMissing(true);
       goTo(missing[0].section.id);
-      Alert.alert(
+      showMessage(
         'Some answers are missing',
         missing.map((m) => `${m.section.title}: ${m.questions.length}`).join('\n'),
       );
@@ -125,14 +126,11 @@ export default function ScoutScreen() {
     }
     addSubmission(active, visibleAnswers(active, answers));
     resetForm(true);
-    Alert.alert('Saved', 'Saved on this device. It is sent to the spreadsheet as soon as there is internet.');
+    showMessage('Saved', 'Saved on this device. It is sent to the spreadsheet as soon as there is internet.');
   };
 
   const clear = () =>
-    Alert.alert('Clear form?', 'All answers in this form will be deleted.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Clear', style: 'destructive', onPress: () => resetForm(false) },
-    ]);
+    confirmAction('Clear form?', 'All answers in this form will be deleted.', 'Clear', () => resetForm(false));
 
   /** Changing the template needs no editor code; it only discards the form in progress. */
   const switchTemplate = (id: string) => {
@@ -149,10 +147,7 @@ export default function ScoutScreen() {
       doSwitch();
       return;
     }
-    Alert.alert('Switch template?', 'The answers in the current form will be deleted.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Switch', style: 'destructive', onPress: doSwitch },
-    ]);
+    confirmAction('Switch template?', 'The answers in the current form will be deleted.', 'Switch', doSwitch);
   };
 
   const isLast = index === sections.length - 1;

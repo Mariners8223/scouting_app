@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { AppButton, Card, ChoiceButtons, LabeledInput, Row } from '@/components/ui/controls';
@@ -8,6 +8,7 @@ import { useTemplates } from '@/context/templates-context';
 import { answerQuestions } from '@/form/logic';
 import type { FormSchema } from '@/form/types';
 import { useTheme } from '@/hooks/use-theme';
+import { confirmAction, showMessage } from '@/services/dialogs';
 
 const BLANK = 'Blank';
 
@@ -34,7 +35,7 @@ export function TemplatesList({ onEdit }: { onEdit: (template: FormSchema) => vo
   const create = () => {
     const y = Number(year);
     if (!name.trim() || !y) {
-      Alert.alert('Missing details', 'Write a name and a year.');
+      showMessage('Missing details', 'Write a name and a year.');
       return;
     }
     const created = createTemplate({ name: name.trim(), year: y, copyFromId: copyFrom });
@@ -44,13 +45,12 @@ export function TemplatesList({ onEdit }: { onEdit: (template: FormSchema) => vo
 
   const remove = (t: FormSchema) => {
     if (templates.length === 1) {
-      Alert.alert('Can’t delete', 'You need at least one template.');
+      showMessage('Can’t delete', 'You need at least one template.');
       return;
     }
-    Alert.alert('Delete template?', `${label(t)} will be deleted from this device.`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteTemplate(t.id) },
-    ]);
+    confirmAction('Delete template?', `${label(t)} will be deleted from this device.`, 'Delete', () =>
+      deleteTemplate(t.id),
+    );
   };
 
   return (

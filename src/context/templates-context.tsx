@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { DEFAULT_SCHEMA } from '@/form/default-schema';
 import { newId } from '@/form/logic';
 import type { Answers, FormSchema, Submission } from '@/form/types';
-import { KEYS, loadJson, saveJson } from '@/services/storage';
+import { KEYS, loadJson, requestPersistentStorage, saveJson } from '@/services/storage';
 
 type TemplatesContextValue = {
   loading: boolean;
@@ -38,6 +38,7 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
   const submissionsRef = useRef<Submission[]>([]);
 
   useEffect(() => {
+    requestPersistentStorage();
     (async () => {
       const [stored, storedActive, storedSubmissions] = await Promise.all([
         loadJson<FormSchema[]>(KEYS.templates),

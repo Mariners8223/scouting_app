@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 /** Small JSON wrapper so the rest of the app never touches the storage library directly. */
 
@@ -25,4 +26,14 @@ export async function saveJson(key: string, value: unknown) {
 
 export async function remove(key: string) {
   await AsyncStorage.removeItem(key);
+}
+
+/** On web, asks the browser not to clear the saved forms when the phone runs low on space. */
+export async function requestPersistentStorage() {
+  if (Platform.OS !== 'web' || typeof navigator === 'undefined' || !navigator.storage?.persist) return;
+  try {
+    await navigator.storage.persist();
+  } catch (e) {
+    console.warn('Persistent storage was not granted', e);
+  }
 }
