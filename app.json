@@ -48,6 +48,17 @@
       "typedRoutes": true,
       "reactCompiler": true,
       "baseUrl": "/scouting_app"
-    }
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "40a452b6-fa1c-4cfc-a413-d9ab6b7ef51c"
+      }
+    },
+    "owner": "mariners8223"
   }
 }
