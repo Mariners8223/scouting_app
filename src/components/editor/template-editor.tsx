@@ -61,6 +61,12 @@ export function TemplateEditor({ draft, onChange }: Props) {
           keyboardType="number-pad"
           onChangeText={(text) => onChange({ ...draft, year: Number(text.replace(/\D/g, '')) || 0 })}
         />
+        <LabeledInput
+          label="Spreadsheet tab (where the answers go)"
+          value={draft.sheetName ?? ''}
+          placeholder={draft.name}
+          onChangeText={(sheetName) => onChange({ ...draft, sheetName: sheetName || undefined })}
+        />
       </Card>
 
       {problems.length ? (

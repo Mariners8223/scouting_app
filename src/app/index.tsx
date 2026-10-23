@@ -8,6 +8,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AppButton, ChoiceButtons, Row } from '@/components/ui/controls';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useSync } from '@/context/sync-context';
 import { useTemplates } from '@/context/templates-context';
 import {
   answerQuestions,
@@ -34,6 +35,7 @@ export default function ScoutScreen() {
   const safeArea = useSafeAreaInsets();
   const { loading, active, templates, setActive, addSubmission, submissions } = useTemplates();
   const [picking, setPicking] = useState(false);
+  const { pendingCount, syncing, syncNow } = useSync();
   const [answers, setAnswers] = useState<Answers>({});
   const [tabId, setTabId] = useState<string>();
   const [showMissing, setShowMissing] = useState(false);
@@ -123,7 +125,7 @@ export default function ScoutScreen() {
     }
     addSubmission(active, visibleAnswers(active, answers));
     resetForm(true);
-    Alert.alert('Saved', 'The form was saved on this device.');
+    Alert.alert('Saved', 'Saved on this device. It is sent to the spreadsheet as soon as there is internet.');
   };
 
   const clear = () =>
@@ -163,6 +165,15 @@ export default function ScoutScreen() {
           <ThemedText type="small" themeColor="textSecondary">
             {active.year} · {savedHere} saved on this device
           </ThemedText>
+          <Pressable accessibilityRole="button" onPress={syncNow} disabled={syncing || pendingCount === 0}>
+            <ThemedText type="smallBold" style={{ color: pendingCount ? theme.danger : theme.accent }}>
+              {syncing
+                ? `Sending ${pendingCount}…`
+                : pendingCount
+                  ? `${pendingCount} waiting for internet · tap to send`
+                  : 'All forms sent ✓'}
+            </ThemedText>
+          </Pressable>
         </View>
         {templates.length > 1 ? (
           <AppButton title="Switch" variant="ghost" small onPress={() => setPicking(true)} />

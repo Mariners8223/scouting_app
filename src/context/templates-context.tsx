@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { DEFAULT_SCHEMA } from '@/form/default-schema';
 import { newId } from '@/form/logic';
@@ -16,8 +16,11 @@ type TemplatesContextValue = {
   saveTemplate: (schema: FormSchema) => FormSchema;
   createTemplate: (options: { name: string; year: number; copyFromId?: string }) => FormSchema;
   deleteTemplate: (id: string) => void;
+  /** Every saved form on this device, sent or not. */
   submissions: Submission[];
   addSubmission: (schema: FormSchema, answers: Answers) => void;
+  /** Called by the sync once the spreadsheet confirmed these forms. */
+  markSynced: (ids: string[]) => void;
 };
 
 const TemplatesContext = createContext<TemplatesContextValue | null>(null);
@@ -31,6 +34,8 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
   const [templates, setTemplates] = useState<FormSchema[]>([]);
   const [activeId, setActiveId] = useState<string>();
   const [submissions, setSubmissions] = useState<Submission[]>([]);
+  // Saving a form and the background sync can both change submissions; the ref keeps them from overwriting each other.
+  const submissionsRef = useRef<Submission[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -49,7 +54,8 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
         setActiveId(initial[0].id);
         saveJson(KEYS.activeTemplateId, initial[0].id).catch((e) => console.error('Failed to save active template', e));
       }
-      setSubmissions(storedSubmissions ?? []);
+      submissionsRef.current = storedSubmissions ?? [];
+      setSubmissions(submissionsRef.current);
       setLoading(false);
     })();
   }, []);
@@ -100,6 +106,13 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
     [templates, activeId, persistTemplates, setActive],
   );
 
+  const updateSubmissions = useCallback((change: (current: Submission[]) => Submission[]) => {
+    const next = change(submissionsRef.current);
+    submissionsRef.current = next;
+    setSubmissions(next);
+    saveJson(KEYS.submissions, next).catch((e) => console.error('Failed to save submissions', e));
+  }, []);
+
   const addSubmission = useCallback(
     (schema: FormSchema, answers: Answers) => {
       const submission: Submission = {
@@ -107,13 +120,21 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
         createdAt: new Date().toISOString(),
         schemaId: schema.id,
         schemaVersion: schema.version,
+        sheetName: schema.sheetName || schema.name,
         answers,
       };
-      const next = [...submissions, submission];
-      setSubmissions(next);
-      saveJson(KEYS.submissions, next).catch((e) => console.error('Failed to save submission', e));
+      updateSubmissions((current) => [...current, submission]);
     },
-    [submissions],
+    [updateSubmissions],
+  );
+
+  const markSynced = useCallback(
+    (ids: string[]) => {
+      const done = new Set(ids);
+      const at = new Date().toISOString();
+      updateSubmissions((current) => current.map((s) => (done.has(s.id) && !s.syncedAt ? { ...s, syncedAt: at } : s)));
+    },
+    [updateSubmissions],
   );
 
   const value = useMemo<TemplatesContextValue>(
@@ -127,8 +148,20 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
       deleteTemplate,
       submissions,
       addSubmission,
+      markSynced,
     }),
-    [loading, templates, activeId, setActive, saveTemplate, createTemplate, deleteTemplate, submissions, addSubmission],
+    [
+      loading,
+      templates,
+      activeId,
+      setActive,
+      saveTemplate,
+      createTemplate,
+      deleteTemplate,
+      submissions,
+      addSubmission,
+      markSynced,
+    ],
   );
 
   return <TemplatesContext.Provider value={value}>{children}</TemplatesContext.Provider>;

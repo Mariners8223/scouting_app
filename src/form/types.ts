@@ -73,6 +73,8 @@ export type FormSchema = {
   /** Bumped on every save, stored with each submission. */
   version: number;
   updatedAt: string;
+  /** Spreadsheet tab that receives this form's answers. Defaults to the template name. */
+  sheetName?: string;
   sections: Section[];
   orderRule?: SectionOrderRule;
 };
@@ -85,5 +87,9 @@ export type Submission = {
   createdAt: string;
   schemaId: string;
   schemaVersion: number;
+  /** Spreadsheet tab, fixed when the form is saved so later template edits don't move old rows. */
+  sheetName?: string;
   answers: Answers;
+  /** When the spreadsheet confirmed it; missing while waiting to be sent. */
+  syncedAt?: string;
 };
