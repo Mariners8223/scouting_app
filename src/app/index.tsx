@@ -48,6 +48,8 @@ export default function ScoutScreen() {
   /** Which template the answers belong to; the form waits until it matches the active one. */
   const [loadedFor, setLoadedFor] = useState<string>();
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+  // The tab bar scrolls so the current tab is always in view.
+  const tabRefs = useRef(new Map<string, unknown>());
   const activeId = active?.id;
   const draftLoaded = !!activeId && loadedFor === activeId;
 
@@ -65,6 +67,14 @@ export default function ScoutScreen() {
       })
       .catch(() => {}); // offline: try again next time
   }, []);
+
+  // Brings the current tab into view, also when tabs move because the order changed (e.g. who won Auto).
+  useEffect(() => {
+    if (!tabId) return;
+    // On the web (the PWA) a tab is a DOM element; elsewhere scrollIntoView is missing and nothing happens.
+    const tab = tabRefs.current.get(tabId) as HTMLElement | null | undefined;
+    tab?.scrollIntoView?.({ inline: 'center', block: 'nearest' });
+  }, [tabId, answers]);
 
   // Restore an unfinished form (e.g. after the app was closed mid-match).
   useEffect(() => {
@@ -279,6 +289,9 @@ export default function ScoutScreen() {
           return (
             <Pressable
               key={s.id}
+              ref={(node) => {
+                tabRefs.current.set(s.id, node);
+              }}
               accessibilityRole="tab"
               accessibilityState={{ selected }}
               onPress={() => goTo(s.id)}
