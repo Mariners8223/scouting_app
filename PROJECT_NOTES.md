@@ -76,6 +76,19 @@ Role is several choices, like in AppSheet. The Info fields alliance and no-show 
 
 A built-in template that was never saved in the editor (version 1) is replaced by the app's newest version when the app starts. After that, published templates win: a phone replaces its copy when the published version is newer, except a copy being edited on that phone with a higher version. A downloaded template that fails the editor's checks is ignored, so a broken publish never replaces a working form.
 
+## Where the 2026 data lives (checked 2026-10-24)
+
+Data is entered in only four tabs, one per form; every other tab of the dashboard file ("scouting master frontend for new scouting app 2026", `1NFWKbs…`) is formulas, charts or hand-typed lists (Teams Numbers, OPR Data, groups), and the app never writes there.
+
+| Form (template id) | Writes to | Read by |
+| --- | --- | --- |
+| Match Scouting 2026 (`match-2026`, built in) | AppSheet file `1YljG5…` → `Table` | Table Regular → Sum Dashboard, Team Dashboard, graph helpers, pick lists |
+| Fuel Scouting 2026 (`fuel-2026`) | Fuel file `1zN89…` → `Sheet1` | Table Fuel → Pick list data |
+| Pit Scouting 2026 (`pit-2026`) | Pit file `1t_jD…` → `Sheet1` | Table Pit (no formula uses it yet) |
+| Wet Scouting 2026 (`wet-2026`) | dashboard file `1NFWKbs…` → `wetscouting` | Team Dashboard (notes) |
+
+Fuel, Pit and Wet were made on 2026-10-24 from those tabs' existing headers, their columns got named ranges after the question ids, and they were published (not "in use"). Their question types were guessed from the headers (the tabs were empty); change them in the Form Editor if needed. The script account (ironih.frc@gmail.com) has edit access to all four files.
+
 ## Published templates
 
 - **Publish** stores the template in the `App Templates` tab of the home spreadsheet (`HOME_SPREADSHEET_ID` in `Code.gs`, the AppSheet data spreadsheet `1YljG5…`): one row per template, with the JSON split over cells (a cell holds 50,000 characters). One template can be marked **in use**; phones switch to it once each time that changes, so a scouter can still pick another one afterwards.
