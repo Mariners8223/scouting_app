@@ -51,14 +51,14 @@ export function SheetConnection({ draft, onChange }: Props) {
   const tab = sheetNameOf(draft);
 
   const check = async (code: string) => {
-    setInfo(await fetchSheetInfo(draft.spreadsheetId, tab, code));
+    setInfo(await fetchSheetInfo(undefined, tab, code));
     setAsking(undefined);
   };
 
   /** Older template with column letters: name those columns in the sheet, then drop the letters. */
   const convert = async (code: string) => {
     const layout = draft.columnLayout!;
-    const sheet = await fetchSheetInfo(draft.spreadsheetId, tab, code);
+    const sheet = await fetchSheetInfo(undefined, tab, code);
     const columns: Record<string, string> = { [KEY_NAME]: layout.key };
     const constants: Record<string, string> = {};
     for (const [letter, value] of Object.entries(layout.constants ?? {})) {
@@ -67,7 +67,7 @@ export function SheetConnection({ draft, onChange }: Props) {
       constants[name] = value;
     }
     for (const q of answerQuestions(draft)) if (q.column) columns[q.id] = q.column;
-    const result = await nameColumns(draft.spreadsheetId, tab, columns, code);
+    const result = await nameColumns(undefined, tab, columns, code);
     onChange({
       ...draft,
       columnLayout: undefined,
@@ -75,7 +75,7 @@ export function SheetConnection({ draft, onChange }: Props) {
       sections: draft.sections.map((s) => ({ ...s, questions: s.questions.map(({ column: _, ...q }) => q) })),
     });
     setText(constantsText(Object.keys(constants).length ? constants : draft.constants));
-    setInfo(await fetchSheetInfo(draft.spreadsheetId, tab, code));
+    setInfo(await fetchSheetInfo(undefined, tab, code));
     setAsking(undefined);
     showMessage(
       'Switched to named ranges',

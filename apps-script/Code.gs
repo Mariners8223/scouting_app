@@ -22,8 +22,10 @@
  * - unnameColumns, copyValues: maintenance, used to move the data into the home spreadsheet (need the editor code).
  * - find:        a saved form by its key.
  *
- * Forms are only written to and read from spreadsheets that a published template points to
- * (or the home spreadsheet), so the public URL can't be used to reach other spreadsheets.
+ * Everything happens in ONE spreadsheet, the home spreadsheet below: forms are written there and
+ * read from there, whatever spreadsheet a form or template names (a form saved for one of the old
+ * files goes to the home tab that replaced it, see MOVED; any other file id is ignored). Templates
+ * that name another spreadsheet can't be published. No other file is ever written to.
  */
 
 /**
@@ -83,14 +85,13 @@ function doGet() {
 // ---------- submit ----------
 
 function submit(body) {
-  const allowed = allowedSpreadsheets();
+  const home = SpreadsheetApp.openById(HOME_SPREADSHEET_ID);
   const saved = [];
   const errors = [];
   for (const item of body.submissions || []) {
     try {
-      const target = resolve(item.spreadsheetId, item.sheet);
-      item.sheet = target.sheet;
-      appendSubmission(openAllowed(target.spreadsheetId, allowed), item);
+      item.sheet = homeTab(item.spreadsheetId, item.sheet);
+      appendSubmission(home, item);
       saved.push(item.id);
     } catch (err) {
       // One bad form (e.g. a template that isn't published yet) doesn't block the others.
@@ -234,7 +235,9 @@ function publish(body) {
   checkCode(body.code);
   const template = body.template;
   if (!template || !template.id || !Array.isArray(template.sections)) throw new Error('Not a form template');
-  if (template.spreadsheetId) SpreadsheetApp.openById(template.spreadsheetId); // fails now if the script can't open it
+  if (template.spreadsheetId && template.spreadsheetId !== HOME_SPREADSHEET_ID) {
+    throw new Error('Forms can only go to the team spreadsheet. Clear the template\'s spreadsheet link and publish again.');
+  }
 
   const sheet = templatesSheet();
   const text = JSON.stringify(template);
@@ -258,7 +261,8 @@ function publish(body) {
 // ---------- sheet info / naming columns / find ----------
 
 function openTab(body) {
-  const spreadsheet = SpreadsheetApp.openById(body.spreadsheetId || HOME_SPREADSHEET_ID);
+  onlyHome(body.spreadsheetId);
+  const spreadsheet = SpreadsheetApp.openById(HOME_SPREADSHEET_ID);
   const sheet = spreadsheet.getSheetByName(body.sheet);
   return { spreadsheet: spreadsheet, sheet: sheet };
 }
@@ -314,7 +318,8 @@ function ownsName(tab, name) {
 /** Removes named ranges by name (e.g. to free a name for another tab). */
 function unnameColumns(body) {
   checkCode(body.code);
-  const spreadsheet = SpreadsheetApp.openById(body.spreadsheetId || HOME_SPREADSHEET_ID);
+  onlyHome(body.spreadsheetId);
+  const spreadsheet = SpreadsheetApp.openById(HOME_SPREADSHEET_ID);
   const removed = [];
   (body.names || []).forEach((name) => {
     if (spreadsheet.getRangeByName(name)) {
@@ -332,6 +337,8 @@ function unnameColumns(body) {
  */
 function copyValues(body) {
   checkCode(body.code);
+  // Reads only the home spreadsheet or one of the old files (to bring their data in); writes only home.
+  if (body.from.spreadsheetId !== HOME_SPREADSHEET_ID && !MOVED[body.from.spreadsheetId]) throw new Error('Unknown source spreadsheet');
   const from = SpreadsheetApp.openById(body.from.spreadsheetId).getSheetByName(body.from.sheet);
   const to = SpreadsheetApp.openById(HOME_SPREADSHEET_ID).getSheetByName(body.to.sheet);
   if (!from || !to) throw new Error('Tab not found');
@@ -353,12 +360,11 @@ function copyValues(body) {
 function find(body) {
   const key = String(body.key || '').trim().toLowerCase();
   if (!key) throw new Error('No key');
-  const allowed = allowedSpreadsheets();
+  const home = SpreadsheetApp.openById(HOME_SPREADSHEET_ID);
   const targets = body.targets || [];
   for (let t = 0; t < targets.length; t++) {
-    const target = Object.assign({}, targets[t], resolve(targets[t].spreadsheetId, targets[t].sheet));
-    if (!allowed[target.spreadsheetId]) continue;
-    const spreadsheet = openAllowed(target.spreadsheetId, allowed);
+    const target = Object.assign({}, targets[t], { sheet: homeTab(targets[t].spreadsheetId, targets[t].sheet) });
+    const spreadsheet = home;
     const sheet = spreadsheet.getSheetByName(target.sheet);
     if (!sheet) continue;
     const layout = sheetLayout(spreadsheet, sheet);
@@ -375,28 +381,20 @@ function find(body) {
 
 // ---------- helpers ----------
 
-/** Where a form for this spreadsheet + tab really goes: moved files point to the home spreadsheet. */
-function resolve(spreadsheetId, sheet) {
-  const id = spreadsheetId || HOME_SPREADSHEET_ID;
-  const moved = MOVED[id];
-  if (moved && moved[sheet]) return { spreadsheetId: HOME_SPREADSHEET_ID, sheet: moved[sheet] };
-  return { spreadsheetId: id, sheet: sheet };
+/**
+ * The home tab a form for this spreadsheet + tab goes to. The spreadsheet id never decides where
+ * anything is written: a moved file's tab maps to its replacement, and anything else uses the same
+ * tab name in the home spreadsheet. So a look-alike file, even one with the same tab names, is never touched.
+ */
+function homeTab(spreadsheetId, sheet) {
+  const moved = MOVED[spreadsheetId];
+  return moved && moved[sheet] ? moved[sheet] : sheet;
 }
 
-/** Spreadsheets forms may go to: the home one and every published template's. */
-function allowedSpreadsheets() {
-  const allowed = {};
-  allowed[HOME_SPREADSHEET_ID] = true;
-  publishedRows().forEach((r) => {
-    if (r[6] && !MOVED[String(r[6])]) allowed[String(r[6])] = true;
-  });
-  return allowed;
-}
 
-function openAllowed(id, allowed) {
-  const spreadsheetId = id || HOME_SPREADSHEET_ID;
-  if (!allowed[spreadsheetId]) throw new Error('This spreadsheet is not used by a published template. Publish the template first.');
-  return SpreadsheetApp.openById(spreadsheetId);
+/** Maintenance actions work on the home spreadsheet only. */
+function onlyHome(spreadsheetId) {
+  if (spreadsheetId && spreadsheetId !== HOME_SPREADSHEET_ID) throw new Error('Only the team spreadsheet can be changed');
 }
 
 function checkCode(code) {

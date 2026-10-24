@@ -17,13 +17,13 @@ An FRC match-scouting app for team Mariners 8223, built with **Expo SDK 58 / Rea
 | --- | --- | --- |
 | Scout | `src/app/index.tsx` | Fills in the active template. **Update** (no code) downloads the newest published forms, sends waiting forms and checks for a new app version (offers a restart; the form in progress is kept). Dynamic tabs, required-answer check, draft kept while filling, **Switch** button (always shown) or a tap on the form name to change template (no code needed; a manual choice sticks until the next template is marked in use), sync status ("N waiting for internet · tap to send", plus the reason when the sheet refused a form). After saving it shows the form's **key**; **Open** shows any saved form by key (see below). |
 | Guide | `src/app/guide.tsx` | The template + new-sheet guide (`docs/template-guide.md`, copied in by `scripts/build-guide.js` before each web build; `npm run guide` after editing it), shown right to left. No code needed. |
-| Form Editor | `src/app/editor.tsx` | Locked behind an editor code. Lists templates by year; create, copy to a new year, delete, pick the one in use; edit tabs, questions, conditions, tab order, spreadsheet link and columns. **Publish** (asks for the editor code again) sends a template to all phones. |
+| Form Editor | `src/app/editor.tsx` | Locked behind an editor code. Lists templates by year; create, copy to a new year, delete, pick the one in use; edit tabs, questions, conditions, tab order, the tab it writes to and its columns. **Publish** (asks for the editor code again) sends a template to all phones. |
 
 ## A new season without code changes
 
-1. Make the season's spreadsheet and give the Apps Script account edit access to it.
+1. Everything stays in the team spreadsheet (the copy of "scouting master frontend"); a new season only needs a new tab, created by the first form.
 2. Form Editor → the last template → **Copy to new year**, then edit the questions.
-3. In the template: paste the **spreadsheet link** and set the tab. Answers find their column **by name** (the question id), see below; for a sheet whose columns are already laid out, give those columns named ranges. **Check the sheet** shows where every answer will go.
+3. In the template: set the tab. Answers find their column **by name** (the question id), see below; for a sheet whose columns are already laid out, give those columns named ranges. **Check the sheet** shows where every answer will go.
 4. **Save**, then **Publish** with the editor code and "All phones scout with this form" on. Every phone downloads it the next time it is online and switches to it once.
 
 The step-by-step guide for the team (in Hebrew), including dashboard formulas: [`docs/template-guide.md`](docs/template-guide.md).
@@ -110,7 +110,7 @@ The Form Editor asks for a code, and **publishing and loading columns ask for it
 
 - All unsent forms go in **one request**. It retries when the network comes back, when the app is reopened, after every save and every 30 s, while the app is open (iOS does not let it run in the background).
 - Each template writes to its own tab (default: template name, can be changed in the editor; the 2026 template writes to `Table`). A form that was already saved (same id, in the Key column or the `submissionId` column) is skipped, so resending after a dropped connection doesn't duplicate rows. Text is written with a leading `'` so Sheets keeps it as text (and a comment starting with `=` is never a formula).
-- Each form goes to its template's **spreadsheet link** (empty = the home spreadsheet). The script only writes to and reads from the home spreadsheet and spreadsheets of **published** templates, so the public URL can't reach other spreadsheets of the account; a form for an unpublished spreadsheet stays queued with "Publish the template first". One refused form doesn't block the others.
+- **Only the team spreadsheet is ever written to or read** (`HOME_SPREADSHEET_ID` in `Code.gs`). The spreadsheet id a form or template carries never decides where anything goes: a form for one of the old files goes to the home tab that replaced it (`MOVED`), and any other id is ignored (same tab name, in the home spreadsheet), so a look-alike file with the same tab names is never touched. Publishing a template that names another spreadsheet is refused, maintenance actions (`sheetInfo`, `nameColumns`, `unnameColumns`) refuse other ids, and `copyValues` reads only the home or an old file. The editor has no spreadsheet-link field; publishing drops a leftover link. One refused form doesn't block the others.
 - **Deployed** (2026-10-23, version 3 of the web app deployment `AKfycbxfA8…`, in the Apps Script project owned by ironih.frc@gmail.com; it used to be the brightness test, backed up outside the repo in `Downloads\scouting_app_backups`). To update it after changing `Code.gs`, from `apps-script/` (which has `.clasp.json` + `appsscript.json`):
   ```
   $env:NODE_OPTIONS='--use-system-ca'   # this PC's network filter needs Windows' certificates

@@ -52,7 +52,8 @@ export default function EditorScreen() {
   /** Sends the saved template to the spreadsheet; every phone picks it up the next time it is online. */
   const publish = async (code: string) => {
     if (!saved) return;
-    await publishTemplate(saved, code, inUse);
+    // Every form goes to the team spreadsheet; a link left over from an older template is dropped.
+    await publishTemplate({ ...saved, spreadsheetId: undefined }, code, inUse);
     markPublished(saved.id, saved.version);
     setPublishing(false);
     showMessage(

@@ -13,7 +13,6 @@ import { sheetNameOf } from '@/form/sheet-row';
 import type { FormSchema, Section } from '@/form/types';
 import { useTheme } from '@/hooks/use-theme';
 import { confirmAction } from '@/services/dialogs';
-import { spreadsheetIdFrom } from '@/services/editor-code';
 
 type Props = {
   draft: FormSchema;
@@ -68,22 +67,14 @@ export function TemplateEditor({ draft, onChange }: Props) {
           onChangeText={(text) => onChange({ ...draft, year: Number(text.replace(/\D/g, '')) || 0 })}
         />
         <LabeledInput
-          label="Spreadsheet link (where the answers go; empty = the app's main spreadsheet)"
-          value={draft.spreadsheetId ?? ''}
-          placeholder="https://docs.google.com/spreadsheets/d/…"
-          autoCapitalize="none"
-          autoCorrect={false}
-          onChangeText={(text) => onChange({ ...draft, spreadsheetId: spreadsheetIdFrom(text) || undefined })}
-        />
-        <LabeledInput
-          label="Spreadsheet tab (where the answers go)"
+          label="Tab in the team spreadsheet (where the answers go)"
           value={draft.sheetName ?? ''}
           placeholder={draft.name}
           onChangeText={(sheetName) => onChange({ ...draft, sheetName: sheetName || undefined })}
         />
         <ThemedText type="small" themeColor="textSecondary">
-          The Apps Script account needs edit access to the spreadsheet. Forms only go there after the template is
-          published.
+          Every form goes to the team spreadsheet (the copy of “scouting master frontend”), never to another file. The
+          tab is created on the first form if it doesn’t exist.
         </ThemedText>
       </Card>
 
