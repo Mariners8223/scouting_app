@@ -20,6 +20,9 @@ export default function AppTabs() {
           <TabTrigger name="editor" href="/editor" asChild>
             <TabButton>Form Editor</TabButton>
           </TabTrigger>
+          <TabTrigger name="guide" href="/guide" asChild>
+            <TabButton>Guide</TabButton>
+          </TabTrigger>
         </BottomTabList>
       </TabList>
     </Tabs>

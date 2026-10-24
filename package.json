@@ -46,8 +46,9 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "build:web": "expo export -p web && workbox generateSW workbox-config.js && node -e \"require('fs').copyFileSync('dist/index.html','dist/404.html')\"",
-    "lint": "expo lint"
+    "build:web": "node scripts/build-guide.js && expo export -p web && workbox generateSW workbox-config.js && node -e \"require('fs').copyFileSync('dist/index.html','dist/404.html')\"",
+    "lint": "expo lint",
+    "guide": "node scripts/build-guide.js"
   },
   "private": true
 }

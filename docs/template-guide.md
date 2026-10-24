@@ -96,18 +96,16 @@
 
 - הסקריפט **לא כותב** ללשוניות האלה ולא משנה בהן כלום, גם אם יש בהן טווחים בעלי שם.
 - **שמות טווחים ייחודיים בכל הגיליון.** אם בדשבורד יש תא בשם `team` (למשל התא שבו בוחרים קבוצה), עמודת הנתונים לא תוכל לקבל את השם הזה. היא תקבל עמודה עם כותרת `team`, וזה עדיין עובד. עדיף לקרוא לתא בדשבורד בשם אחר, כמו `selectedTeam`.
-- **בנוסחאות של הדשבורד משתמשים בשמות במקום באותיות**, ואז הדשבורד לא נשבר אם עמודות זזות:
-  ```
-  =COUNTIF(team, selectedTeam)                          מספר משחקים של הקבוצה
-  =AVERAGEIF(team, selectedTeam, autoCycles)            ממוצע מחזורים
-  =COUNTIFS(team, selectedTeam, fell, TRUE)             כמה פעמים נפל
-  =COUNTIFS(team, selectedTeam, active1Role, "*Defense*")  כמה פעמים שיחק הגנה (בחירה מרובה)
-  =FILTER(comments, team = selectedTeam)                כל ההערות על הקבוצה
-  =FILTER({match, autoCycles}, team = selectedTeam)     נתונים לגרף "לאורך זמן"
-  ```
-  - הטווח כולל את שורת הכותרת. `COUNTIF`, `AVERAGEIF` ו-`FILTER` עם תנאי מתעלמים ממנה בפועל.
-  - `QUERY` לא מקבל שמות של עמודות. לגרפים עדיף `FILTER` כמו בדוגמה, ואת הגרף בונים על התוצאה.
-- **דשבורד בגיליון אחר:** `=IMPORTRANGE("<קישור לגיליון הנתונים>", "team")` מביא עמודה לפי השם שלה.
+- **בנוסחאות של הדשבורד משתמשים בשמות במקום באותיות**, ואז הדשבורד לא נשבר אם עמודות זזות. דוגמאות (`selectedTeam` הוא התא בדשבורד שבו בוחרים קבוצה):
+  - מספר משחקים של הקבוצה: `=COUNTIF(team, selectedTeam)`
+  - ממוצע מחזורים: `=AVERAGEIF(team, selectedTeam, active1Cycles)`
+  - כמה פעמים נפל: `=COUNTIFS(team, selectedTeam, fell, TRUE)`
+  - כמה פעמים שיחק הגנה (בחירה מרובה): `=COUNTIFS(team, selectedTeam, active1Role, "*Defense*")`
+  - כל ההערות על הקבוצה: `=FILTER(comments, team = selectedTeam)`
+  - נתונים לגרף "לאורך זמן": `=FILTER({match, active1Cycles}, team = selectedTeam)`
+- הטווח כולל את שורת הכותרת. `COUNTIF`, `AVERAGEIF` ו-`FILTER` עם תנאי מתעלמים ממנה בפועל.
+- `QUERY` לא מקבל שמות של עמודות. לגרפים עדיף `FILTER` כמו בדוגמה, ואת הגרף בונים על התוצאה.
+- **דשבורד בגיליון אחר:** `=IMPORTRANGE("<sheet link>", "team")` מביא עמודה לפי השם שלה (במקום `<sheet link>` שמים את הקישור לגיליון הנתונים).
 
 ---
 
