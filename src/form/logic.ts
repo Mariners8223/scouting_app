@@ -51,6 +51,22 @@ export function orderedSections(schema: FormSchema, answers: Answers): Section[]
   return [...visible].sort((a, b) => rank(a) - rank(b));
 }
 
+/** Tab titles as the scouter sees them, with tabs that have `numberedAs` numbered in their current order. */
+export function sectionTitles(schema: FormSchema, answers: Answers) {
+  const counts = new Map<string, number>();
+  const titles = new Map<string, string>();
+  for (const s of orderedSections(schema, answers)) {
+    if (!s.numberedAs) {
+      titles.set(s.id, s.title);
+      continue;
+    }
+    const n = (counts.get(s.numberedAs) ?? 0) + 1;
+    counts.set(s.numberedAs, n);
+    titles.set(s.id, `${s.numberedAs} ${n} · ${s.title}`);
+  }
+  return titles;
+}
+
 export function visibleQuestions(section: Section, answers: Answers) {
   return section.questions.filter((q) => evaluate(q.showIf, answers));
 }

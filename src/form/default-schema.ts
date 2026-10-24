@@ -231,10 +231,12 @@ export const DEFAULT_SCHEMA: FormSchema = {
         },
       ],
     },
-    { id: 'active1', title: 'Active', showIf: PLAYED, questions: activeShift('active1') },
-    { id: 'inactive1', title: 'Inactive', showIf: PLAYED, questions: inactiveShift('inactive1') },
-    { id: 'active2', title: 'Active 2', showIf: PLAYED, questions: activeShift('active2') },
-    { id: 'inactive2', title: 'Inactive 2', showIf: PLAYED, questions: inactiveShift('inactive2') },
+    // Four shifts. The alliance that won Auto is inactive in shifts 1 and 3 and active in 2 and 4 (the
+    // order rule below); the tabs are numbered in that order: "Shift 1 · Inactive", "Shift 2 · Active"...
+    { id: 'active1', title: 'Active', numberedAs: 'Shift', showIf: PLAYED, questions: activeShift('active1') },
+    { id: 'inactive1', title: 'Inactive', numberedAs: 'Shift', showIf: PLAYED, questions: inactiveShift('inactive1') },
+    { id: 'active2', title: 'Active', numberedAs: 'Shift', showIf: PLAYED, questions: activeShift('active2') },
+    { id: 'inactive2', title: 'Inactive', numberedAs: 'Shift', showIf: PLAYED, questions: inactiveShift('inactive2') },
     {
       id: 'endgame',
       title: 'Endgame',

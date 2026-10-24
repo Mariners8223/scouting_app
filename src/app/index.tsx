@@ -18,6 +18,7 @@ import {
   isEmpty,
   missingBySection,
   orderedSections,
+  sectionTitles,
   visibleAnswers,
   visibleQuestions,
 } from '@/form/logic';
@@ -87,6 +88,7 @@ export default function ScoutScreen() {
     );
   }
 
+  const titles = sectionTitles(active, answers);
   const index = Math.max(0, sections.findIndex((s) => s.id === tabId));
   const section = sections[index];
   const missing = missingBySection(active, answers);
@@ -124,7 +126,7 @@ export default function ScoutScreen() {
       goTo(missing[0].section.id);
       showMessage(
         'Some answers are missing',
-        missing.map((m) => `${m.section.title}: ${m.questions.length}`).join('\n'),
+        missing.map((m) => `${titles.get(m.section.id)}: ${m.questions.length}`).join('\n'),
       );
       return;
     }
@@ -267,7 +269,7 @@ export default function ScoutScreen() {
               onPress={() => goTo(s.id)}
               style={[styles.tab, { backgroundColor: selected ? theme.accent : theme.backgroundElement }]}>
               <ThemedText type="smallBold" style={{ color: selected ? theme.onAccent : theme.text }}>
-                {s.title}
+                {titles.get(s.id)}
               </ThemedText>
               {showMissing && missingSectionIds.has(s.id) ? (
                 <View style={[styles.dot, { backgroundColor: theme.danger }]} />

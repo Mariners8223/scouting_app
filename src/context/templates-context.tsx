@@ -131,25 +131,16 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
       // A broken download never replaces a working template.
       const usable = published.filter((p) => p?.id && Array.isArray(p.sections) && !schemaProblems(p).length);
       const current = templatesRef.current;
-      const newer = usable.filter((p) => {
-        const local = current.find((t) => t.id === p.id);
-        return !local || local.version < p.version || local.publishedVersion !== p.version;
-      });
-      const changed = newer
-        .filter((p) => {
-          const local = current.find((t) => t.id === p.id);
-          return !local || local.version < p.version;
-        })
-        .map((p) => `${p.year} · ${p.name}`);
+      // Each publish replaces the phone's copy, whatever was edited on the phone: the published form
+      // is the one everybody scouts with. Edits made on a phone after it got a version stay until the next publish.
+      const newer = usable.filter((p) => current.find((t) => t.id === p.id)?.publishedVersion !== p.version);
+      const changed = newer.map((p) => `${p.year} · ${p.name}`);
       if (newer.length) {
         updateTemplates((list) => {
           const next = [...list];
           for (const p of newer) {
             const at = next.findIndex((t) => t.id === p.id);
-            const local = next[at];
-            // A newer copy being edited on this phone stays; it only learns which version is published.
-            const keep = local && local.version > p.version;
-            const merged = keep ? { ...local, publishedVersion: p.version } : { ...p, publishedVersion: p.version };
+            const merged = { ...p, publishedVersion: p.version };
             if (at >= 0) next[at] = merged;
             else next.push(merged);
           }

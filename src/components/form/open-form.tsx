@@ -7,7 +7,7 @@ import { ThemedView } from '@/components/themed-view';
 import { AppButton, Card, LabeledInput, Row } from '@/components/ui/controls';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTemplates } from '@/context/templates-context';
-import { answerToString, interpolate, orderedSections, visibleQuestions } from '@/form/logic';
+import { answerToString, interpolate, orderedSections, sectionTitles, visibleQuestions } from '@/form/logic';
 import { answersFromRow, KEY_NAME, sheetNameOf } from '@/form/sheet-row';
 import type { Answers, FormSchema, Submission } from '@/form/types';
 import { useTheme } from '@/hooks/use-theme';
@@ -160,6 +160,7 @@ function summary(s: Submission) {
 /** Read-only answers, tab by tab, in the order the scouter saw them. */
 function FormAnswers({ opened }: { opened: Opened }) {
   const { template, answers } = opened;
+  const titles = template ? sectionTitles(template, answers) : undefined;
   return (
     <>
       <ThemedText type="small" themeColor="textSecondary">
@@ -168,7 +169,7 @@ function FormAnswers({ opened }: { opened: Opened }) {
       </ThemedText>
       {template ? (
         orderedSections(template, answers).map((section) => (
-          <Card key={section.id} title={section.title}>
+          <Card key={section.id} title={titles?.get(section.id)}>
             {visibleQuestions(section, answers).map((q) =>
               q.type === 'header' ? (
                 <ThemedText key={q.id} type="smallBold">

@@ -55,6 +55,11 @@ export type Section = {
   title: string;
   questions: Question[];
   showIf?: Condition;
+  /**
+   * Numbers this tab by its place among the visible tabs with the same word, e.g. "Shift":
+   * "Shift 1 · Inactive", "Shift 2 · Active"... so the numbers follow the tab order rule.
+   */
+  numberedAs?: string;
 };
 
 /**

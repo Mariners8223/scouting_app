@@ -1,5 +1,10 @@
 This is an Expo/React Native mobile application. Prioritize mobile-first patterns, performance, and cross-platform compatibility.
 
+## Read first
+
+- `PROJECT_NOTES.md`: what the app is, where everything lives, how it's deployed.
+- `docs/AI_TEMPLATES_AND_SHEETS.md`: **before any change to form templates, the sync, or the Google Sheets side.** How answers find their column (named ranges), the rules that keep the team's dashboards working, the script API and step-by-step recipes.
+
 ## Expo has changed — do not trust your training data
 
 Expo ships breaking changes every SDK release. APIs you remember are likely renamed, moved, or removed. Before writing any code that touches an Expo, EAS, or React Native API:

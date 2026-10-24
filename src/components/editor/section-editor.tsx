@@ -54,6 +54,11 @@ export function SectionEditor({ schema, section, onChange }: Props) {
     <View style={styles.container}>
       <Card title="Tab">
         <LabeledInput label="Title" value={section.title} onChangeText={(title) => onChange({ ...section, title })} />
+        <LabeledInput
+          label="Number as (optional, e.g. Shift): shows “Shift 2 · Title”, numbered by the tab’s place among tabs with the same word"
+          value={section.numberedAs ?? ''}
+          onChangeText={(numberedAs) => onChange({ ...section, numberedAs: numberedAs.trim() ? numberedAs : undefined })}
+        />
         <ConditionEditor
           schema={schema}
           condition={section.showIf}

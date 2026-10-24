@@ -1,7 +1,7 @@
 # Mariners 8223 Scouting App: project notes
 
 What has been built so far, the decisions behind it, and what is still open.
-Read this first when picking the project up on another computer.
+Read this first when picking the project up on another computer. AI assistants: also read `docs/AI_TEMPLATES_AND_SHEETS.md` before touching templates or the Sheets side.
 
 ## What the app is
 
@@ -74,7 +74,9 @@ Role is several choices, like in AppSheet. The Info fields alliance and no-show 
 
 **It writes into the AppSheet table.** The 2026 dashboards ("scouting master frontend for new scouting app 2026") read the AppSheet match table (`Table` tab of spreadsheet `1YljG5…`) through `IMPORTRANGE` into "Table Regular", and every formula there uses fixed column letters. On 2026-10-24 that table's columns got **named ranges** after the question ids (53 of them: `key` → A, `from` → C, `scouter` → D, `team` → E, `event` → F, `match` → G, start position → I, active role → W, cycles → X, climb level → BH, fall/wobble/bump/disable → BN–BQ, collection → CD, …), so each answer lands in the column AppSheet used, with the same answer texts. Alliance, no-show, the active-shift defense zone and `submittedAt`/`template`/`formVersion` have no AppSheet column, so they go after column CD, outside the range the dashboard imports. Checked live: an existing AppSheet row reads back correctly through the named ranges.
 
-A built-in template that was never saved in the editor (version 1) is replaced by the app's newest version when the app starts. After that, published templates win: a phone replaces its copy when the published version is newer, except a copy being edited on that phone with a higher version. A downloaded template that fails the editor's checks is ignored, so a broken publish never replaces a working form.
+A built-in template that was never saved in the editor (version 1) is replaced by the app's newest version when the app starts. After that, **every publish replaces each phone's copy** (a phone takes a published template whenever its version differs from the one it last got), even if the copy was edited on the phone; edits made after a phone got a version stay only until the next publish. (Before 2026-10-24 a newer local copy won, which left one phone with an emptied Match form; the Match form was republished as v50.) A downloaded template that fails the editor's checks is ignored, so a broken publish never replaces a working form.
+
+The four shift tabs of the match form are numbered by their place in the current order (`numberedAs: 'Shift'` on the tab, set in the tab editor as "Number as"): won Auto → Shift 1 · Inactive, Shift 2 · Active, Shift 3 · Inactive, Shift 4 · Active; lost Auto → the reverse. Their ids (and so the columns) are unchanged.
 
 ## Where the 2026 data lives (checked 2026-10-24)
 
