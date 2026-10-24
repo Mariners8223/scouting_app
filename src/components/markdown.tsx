@@ -66,6 +66,13 @@ function parse(markdown: string): Block[] {
   return blocks;
 }
 
+/**
+ * Wraps each English phrase ("Google Sheets", "Team Dashboard") in a left-to-right isolate, so mixing
+ * it into a Hebrew sentence doesn't scramble the order, e.g. "ו-Google Sheets" showing as "Google-ו Sheets".
+ */
+const isolateLatin = (text: string) =>
+  text.replace(/[A-Za-z][\w.'/&+]*(?:[ ,][A-Za-z0-9][\w.'/&+]*)*/g, (phrase) => `⁦${phrase}⁩`);
+
 /** **bold**, `code` and [text](link) inside a line. */
 function Inline({ text }: { text: string }) {
   const theme = useTheme();
@@ -76,7 +83,7 @@ function Inline({ text }: { text: string }) {
         if (part.startsWith('**')) {
           return (
             <ThemedText key={i} style={styles.bold}>
-              {part.slice(2, -2)}
+              {isolateLatin(part.slice(2, -2))}
             </ThemedText>
           );
         }
@@ -89,7 +96,7 @@ function Inline({ text }: { text: string }) {
           );
         }
         const link = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-        return <Fragment key={i}>{link ? link[1] : part}</Fragment>;
+        return <Fragment key={i}>{isolateLatin(link ? link[1] : part)}</Fragment>;
       })}
     </>
   );
