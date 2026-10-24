@@ -22,8 +22,10 @@ An FRC match-scouting app for team Mariners 8223, built with **Expo SDK 58 / Rea
 
 1. Make the season's spreadsheet and give the Apps Script account edit access to it.
 2. Form Editor → the last template → **Copy to new year**, then edit the questions.
-3. In the template: paste the **spreadsheet link**, set the tab, and (if other formulas depend on the layout) turn on **Fixed column layout**, press **Load columns from sheet** and pick each question's column by name.
+3. In the template: paste the **spreadsheet link** and set the tab. Answers find their column **by name** (the question id), see below; for a sheet whose columns are already laid out, give those columns named ranges. **Check the sheet** shows where every answer will go.
 4. **Save**, then **Publish** with the editor code and "All phones scout with this form" on. Every phone downloads it the next time it is online and switches to it once.
+
+The step-by-step guide for the team (in Hebrew), including dashboard formulas: [`docs/template-guide.md`](docs/template-guide.md).
 
 Nothing in the code or in `Code.gs` changes. The built-in 2026 form in `default-schema.ts` is only what a brand-new phone starts with before its first download.
 
@@ -34,7 +36,7 @@ src/form/types.ts            FormSchema / Section / Question / Submission types
 src/form/default-schema.ts   The built-in 2026 match form (from the scouting training slides)
 src/form/logic.ts            Tab ordering, show-if conditions, validation, {placeholder} labels
 src/form/edit.ts             Editor helpers (move, duplicate tab, ids from labels)
-src/form/sheet-row.ts        Saved form -> spreadsheet row (fixed columns or by id) and back (for Open)
+src/form/sheet-row.ts        Saved form -> spreadsheet row (values by name) and back (for Open)
 src/context/templates-context.tsx  Templates per year + saved submissions (AsyncStorage), applies published templates
 src/context/sync-context.tsx       Offline queue → Google Sheets, downloads published templates
 src/services/sheets-api.ts   Calls to the Apps Script web app (submit, templates, publish, headers, find)
@@ -58,7 +60,8 @@ workbox-config.js            Service worker that precaches the whole web build
 - **Per question:** id (also the spreadsheet column name), label, description, required, options, **show only if** (another question equals / doesn't equal a value), and **keep for next match** (scouter name stays; match number goes up by one after saving).
 - **Labels can include answers:** `Defense on {team}` shows the team number that was entered.
 - **Tab order rule:** the order of the tabs can depend on an answer. In 2026: if the robot's alliance **won Auto** ("Did his alliance win Auto?" = Y), the order is Inactive → Active → Inactive 2 → Active 2; if it lost, Active comes first.
-- **Fixed column layout (optional, per template):** instead of one column per question id, each question can have a spreadsheet **column letter**, plus a column for the form id and fixed values (e.g. `C=Mariners`). Set in the editor: template → "Spreadsheet columns", and the column field in each question. Questions without a letter still get their own column (named by id) after the fixed ones.
+- **Where answers go (by name):** every value is sent with a name: the question id, plus `key` (the form's key), `submittedAt`, `template`, `formVersion` and the template's fixed values ("Same value in every row", e.g. `from=Mariners`). The script puts each name in the column of the **named range** with that name on the form's tab (Data → Named ranges), else the column whose **header** is the name, else a **new column** at the end, which also gets a named range so dashboards can use it (`=COUNTIF(team, B1)`). Named ranges on other tabs (dashboard cells) are never written to; such a name only gets a header column. Inserting a column moves the named ranges with it, so nothing breaks. Values: numbers as numbers, yes/no as TRUE/FALSE, several choices joined with `" , "` (as AppSheet wrote them). The editor's **Sheet connection** card shows where each answer will go (**Check the sheet**).
+- **Older templates** (published before this) have fixed column letters (`columnLayout` + `column` per question). They keep writing by letter until **Switch to named ranges** in the Sheet connection card names those columns and removes the letters.
 - **Tabs** can also be conditional (in 2026, everything except Info/General is hidden when "Robot didn't show up" = Y).
 - **Templates per year:** "Copy to new year" duplicates a template as the starting point for the next season. Each saved form records its template id and version.
 
@@ -68,7 +71,7 @@ Built from the "הכשרות סקאוטינג יבש 2026" training slides (AppS
 Info (scouter, event, match, team, alliance, no-show), Auto (start position, collection, shot zones 1–9, end zone, tower position/success, did his alliance win Auto), Active / Active 2 (roles, cycles, defense on him, fight or flight, his defense, serving + rolled from/to), Inactive / Inactive 2 (roles, his defense, zone, description), Endgame (climb time, level, position, success), General (collection quality, shoot while collecting, fall, wobble, stuck on bump, disabled, stuck on fuel, comments in Hebrew, cycle description, serving / defense / defense-on-him comments).
 Role is several choices, like in AppSheet. The Info fields alliance and no-show were guessed (the slides don't show them).
 
-**It writes in the AppSheet layout.** The 2026 dashboards ("scouting master frontend for new scouting app 2026") read the AppSheet match table (`Table` tab of spreadsheet `1YljG5…`) through `IMPORTRANGE` into "Table Regular", and every formula there uses fixed column letters. So the 2026 template has a fixed column layout: each question goes to the AppSheet column with the same meaning (team → E, start position → I, active role → W, cycles → X, climb level → BH, fall/wobble/bump/disable → BN–BQ, collection → CD, …; the letters are in `default-schema.ts`), the form id goes to A (Key) and `Mariners` to C (From). Values are written the way AppSheet wrote them: text stays text (team "8223" too), numbers stay numbers, Y/N becomes TRUE/FALSE, several choices are joined with `" , "`. Alliance, no-show and the active-shift defense zone have no AppSheet column, so they go after column CD (with `submittedAt`), outside the range the dashboard imports.
+**It writes into the AppSheet table.** The 2026 dashboards ("scouting master frontend for new scouting app 2026") read the AppSheet match table (`Table` tab of spreadsheet `1YljG5…`) through `IMPORTRANGE` into "Table Regular", and every formula there uses fixed column letters. On 2026-10-24 that table's columns got **named ranges** after the question ids (53 of them: `key` → A, `from` → C, `scouter` → D, `team` → E, `event` → F, `match` → G, start position → I, active role → W, cycles → X, climb level → BH, fall/wobble/bump/disable → BN–BQ, collection → CD, …), so each answer lands in the column AppSheet used, with the same answer texts. Alliance, no-show, the active-shift defense zone and `submittedAt`/`template`/`formVersion` have no AppSheet column, so they go after column CD, outside the range the dashboard imports. Checked live: an existing AppSheet row reads back correctly through the named ranges.
 
 A built-in template that was never saved in the editor (version 1) is replaced by the app's newest version when the app starts. After that, published templates win: a phone replaces its copy when the published version is newer, except a copy being edited on that phone with a higher version. A downloaded template that fails the editor's checks is ignored, so a broken publish never replaces a working form.
 
@@ -99,7 +102,7 @@ The Form Editor asks for a code, and **publishing and loading columns ask for it
   clasp.cmd update-deployment AKfycbxfA8ZqY-I_bwsIrxuvhZ58LgjIjc5ZZm7SqyCpWtwHgY2B_Kzmo4Bp_r8SVsoOs44
   ```
   (`npm install -g @google/clasp`, `clasp.cmd login` once; use `clasp.cmd` because PowerShell blocks `clasp.ps1`.) The account that deploys it needs edit access to `1YljG5…` and each later season's spreadsheet. A browser GET of the URL can show an old cached reply for a minute after deploying.
-- Checked live: the script answers the app (`templates` returned `ok`) and created the `App Templates` tab. A real form and a real publish have not been sent yet. Tested so far: `Code.gs` in Node against fake spreadsheets seeded with the real AppSheet header (fixed columns and types, resend skipped, allow-list, publish with wrong/right code, a 100,000-character template round trip, headers, find + every answer read back identical), and the app in a browser with the script faked (download replaces the local copy, publish asks for the code and a wrong code sends nothing, column picker, key after saving, Open from the phone and from the sheet).
+- Checked live: the script answers the app, publishing works (a "2027 test" template was published from a phone), the 2026 table's named ranges are in place and an existing row reads back by key. Tested in Node against fake spreadsheets (`apps-script` tests live outside the repo): every 2026 answer lands in its old AppSheet column through the named ranges, resend skipped, a column inserted in the middle is followed, a new spreadsheet with dashboard tabs (dashboards untouched, a name used by a dashboard cell falls back to a header column, `q1` header-only), later questions appended, read-back by name, older letter-based templates, allow-list, publish codes, a 100,000-character template.
 
 ## PWA / deployment
 
@@ -125,7 +128,6 @@ The Form Editor asks for a code, and **publishing and loading columns ask for it
 ## Known issues / ideas for next steps
 
 - Deploy and test `apps-script/Code.gs` against the real spreadsheet: send one test form, check the row in `Table` and that it shows up in the Team Dashboard, publish the template once, open the test form by key, then delete the test row.
-- Column letters are fixed per question: if someone inserts a column in the sheet, re-pick the columns in the editor and publish again.
 - Opening a form is read-only; correcting a form isn't possible yet.
 - A few dashboard formulas look for values AppSheet never wrote, so they show nothing with either AppSheet's or the app's data: climb level as `1`/`2` (both write `L1`/`L2`), "Did he defend" (AB/AT, no question fills it), active2 "How did he manage?" counted as `Non` (the app writes `No Defense`, like active 1). Fix those in the dashboard if they matter.
 - Once AppSheet stops being used, it may complain that the table has new columns (CE onward); that's expected.

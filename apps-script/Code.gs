@@ -12,13 +12,14 @@
  *    The account that deploys it needs edit access to every spreadsheet the templates write to.
  *
  * Actions (POST, JSON body with "action"):
- * - submit:    append forms. A template with a fixed column layout writes into the columns it names
- *              (the 2026 AppSheet table); other templates get one column per question.
- *              A form that was already saved (same key) is skipped, so phones can safely resend.
- * - templates: the published templates, for phones to download.
- * - publish:   store a template for all phones (needs the editor code).
- * - headers:   a tab's header row, for picking columns in the editor (needs the editor code).
- * - find:      a saved form by its key.
+ * - submit:      append forms. Each answer goes to the column the sheet names after its question id
+ *                (a named range, else a header), or a new column; see appendSubmission.
+ *                A form that was already saved (same key) is skipped, so phones can safely resend.
+ * - templates:   the published templates, for phones to download.
+ * - publish:     store a template for all phones (needs the editor code).
+ * - sheetInfo:   a tab's headers and named ranges, for checking a template in the editor (needs the editor code).
+ * - nameColumns: give columns of a tab named ranges (needs the editor code).
+ * - find:        a saved form by its key.
  *
  * Forms are only written to and read from spreadsheets that a published template points to
  * (or the home spreadsheet), so the public URL can't be used to reach other spreadsheets.
@@ -32,7 +33,14 @@ const EDITOR_CODE_SHA256 = 'c198adee3b92e835eb4e852ec7e7ddbb0c4e2e296129e1ac5aeb
 /** A cell holds at most 50,000 characters, so long templates are split over several cells. */
 const CHUNK = 45000;
 
-const ACTIONS = { submit: submit, templates: templates, publish: publish, headers: headers, find: find };
+const ACTIONS = {
+  submit: submit,
+  templates: templates,
+  publish: publish,
+  sheetInfo: sheetInfo,
+  nameColumns: nameColumns,
+  find: find,
+};
 
 function doPost(e) {
   const lock = LockService.getScriptLock();
@@ -72,30 +80,88 @@ function submit(body) {
   return { ok: true, saved: saved, errors: errors };
 }
 
+/**
+ * Each value has a name (the question id, or key / submittedAt / a fixed value's name) and goes to:
+ * 1. the column of a named range with that name on this tab (Data > Named ranges), so the sheet decides where;
+ * 2. else the column whose header (row 1) is that name;
+ * 3. else a new column at the end, with that header and a named range of the same name, so dashboards
+ *    and other tabs can use it in formulas, e.g. =COUNTIF(team, B1).
+ * Older templates may still send fixed column letters ("cells"); those go exactly where they say.
+ */
 function appendSubmission(spreadsheet, item) {
   const sheet = spreadsheet.getSheetByName(item.sheet) || spreadsheet.insertSheet(item.sheet);
-  let headers = headerRow(sheet);
-  if (findRow(sheet, headers, item.keyColumn, item.id)) return; // already saved
+  const layout = sheetLayout(spreadsheet, sheet);
+  if (findRow(sheet, keyColumnOf(item, layout), item.id)) return; // already saved
 
   const cells = item.cells || {};
   const named = item.named || {};
-  const fixedEnd = Object.keys(cells).reduce((end, letter) => Math.max(end, columnIndex(letter) + 1), 0);
+  const placed = {}; // column index -> value
+  Object.keys(cells).forEach((letter) => (placed[columnIndex(letter)] = cells[letter]));
 
-  // New headers go after the existing headers and the fixed columns, so they never land in a fixed column.
-  const wanted = item.columns.concat(Object.keys(named));
-  const missing = wanted.filter((key, i) => wanted.indexOf(key) === i && headers.indexOf(key) === -1);
-  if (missing.length) {
-    const start = Math.max(headers.length, fixedEnd);
-    sheet.getRange(1, start + 1, 1, missing.length).setValues([missing]);
-    while (headers.length < start) headers.push('');
-    headers = headers.concat(missing);
-    sheet.setFrozenRows(1);
+  // New columns go after everything already in use, so they never land in a named or fixed column.
+  let next = Math.max(layout.headers.length, layout.end, ...Object.keys(placed).map((c) => Number(c) + 1));
+  const ordered = (item.columns || []).filter((name) => name in named);
+  const names = ordered.concat(Object.keys(named).filter((name) => ordered.indexOf(name) === -1));
+  for (const name of names) {
+    let column = columnOf(name, layout);
+    if (column < 0) {
+      column = next++;
+      sheet.getRange(1, column + 1).setValue(name);
+      layout.headers[column] = name;
+      nameColumn(spreadsheet, sheet, name, column, layout);
+      sheet.setFrozenRows(1);
+    }
+    placed[column] = named[name];
   }
 
-  const values = new Array(Math.max(headers.length, fixedEnd)).fill('');
-  Object.keys(cells).forEach((letter) => (values[columnIndex(letter)] = cellValue(cells[letter])));
-  Object.keys(named).forEach((name) => (values[headers.indexOf(name)] = cellValue(named[name])));
+  const width = Math.max(0, ...Object.keys(placed).map((c) => Number(c) + 1));
+  const values = new Array(width).fill('');
+  Object.keys(placed).forEach((column) => (values[column] = cellValue(placed[column])));
   sheet.appendRow(values);
+}
+
+/** The tab's header row and named ranges: { headers, names: {name(lowercase): column}, taken: {name: true} for every tab, end }. */
+function sheetLayout(spreadsheet, sheet) {
+  const names = {};
+  const taken = {};
+  let end = 0;
+  spreadsheet.getNamedRanges().forEach((named) => {
+    const name = named.getName().toLowerCase();
+    taken[name] = true;
+    const range = named.getRange();
+    // Named ranges on other tabs (a dashboard's input cell, a chart's data) are never written to.
+    if (range.getSheet().getSheetId() !== sheet.getSheetId()) return;
+    names[name] = range.getColumn() - 1;
+    end = Math.max(end, range.getColumn());
+  });
+  return { headers: headerRow(sheet).map(String), names: names, taken: taken, end: end };
+}
+
+function columnOf(name, layout) {
+  const named = layout.names[String(name).toLowerCase()];
+  return named !== undefined ? named : layout.headers.indexOf(name);
+}
+
+/** Column holding the form id: a fixed letter (older templates), the "key" name, or the "submissionId" header. */
+function keyColumnOf(item, layout) {
+  if (item.keyColumn) return columnIndex(item.keyColumn);
+  const column = columnOf(item.keyName || 'key', layout);
+  return column >= 0 ? column : layout.headers.indexOf('submissionId');
+}
+
+/** Gives a whole column a named range, unless the name is taken (anywhere) or isn't allowed (e.g. "q1" looks like a cell). */
+function nameColumn(spreadsheet, sheet, name, column, layout) {
+  const lower = String(name).toLowerCase();
+  if (layout.taken[lower]) return false;
+  try {
+    const letter = columnLetter(column);
+    spreadsheet.setNamedRange(name, sheet.getRange(letter + ':' + letter));
+    layout.taken[lower] = true;
+    layout.names[lower] = column;
+    return true;
+  } catch (err) {
+    return false;
+  }
 }
 
 // ---------- templates ----------
@@ -153,16 +219,59 @@ function publish(body) {
   return { ok: true };
 }
 
-// ---------- headers / find ----------
+// ---------- sheet info / naming columns / find ----------
 
-function headers(body) {
-  checkCode(body.code);
-  const sheet = SpreadsheetApp.openById(body.spreadsheetId || HOME_SPREADSHEET_ID).getSheetByName(body.sheet);
-  if (!sheet) throw new Error('No tab named "' + body.sheet + '" in that spreadsheet');
-  return { ok: true, headers: headerRow(sheet).map(String) };
+function openTab(body) {
+  const spreadsheet = SpreadsheetApp.openById(body.spreadsheetId || HOME_SPREADSHEET_ID);
+  const sheet = spreadsheet.getSheetByName(body.sheet);
+  return { spreadsheet: spreadsheet, sheet: sheet };
 }
 
-/** Looks for the key in each target (spreadsheet + tab + key column) and returns the first matching row. */
+/**
+ * What the editor shows when checking a template against its tab: the header row, which names
+ * point at which column of this tab, and names used on other tabs (a question with such an id
+ * can't get its own named range). A tab that doesn't exist yet is fine: it is created on the first form.
+ */
+function sheetInfo(body) {
+  checkCode(body.code);
+  const tab = openTab(body);
+  if (!tab.sheet) return { ok: true, exists: false, headers: [], named: {}, elsewhere: [] };
+  const layout = sheetLayout(tab.spreadsheet, tab.sheet);
+  const named = {};
+  Object.keys(layout.names).forEach((name) => (named[name] = columnLetter(layout.names[name])));
+  const elsewhere = Object.keys(layout.taken).filter((name) => layout.names[name] === undefined);
+  return { ok: true, exists: true, headers: layout.headers, named: named, elsewhere: elsewhere };
+}
+
+/**
+ * Gives columns of a tab named ranges, e.g. { team: 'E', climbLevel: 'BH' }, so forms go there
+ * by name. Used once to connect an existing sheet; a name already used on another tab is skipped.
+ */
+function nameColumns(body) {
+  checkCode(body.code);
+  const tab = openTab(body);
+  if (!tab.sheet) throw new Error('No tab named "' + body.sheet + '" in that spreadsheet');
+  const layout = sheetLayout(tab.spreadsheet, tab.sheet);
+  const named = [];
+  const skipped = [];
+  Object.keys(body.columns || {}).forEach((name) => {
+    const lower = name.toLowerCase();
+    if (layout.taken[lower] && layout.names[lower] === undefined) return skipped.push(name + ' (used on another tab)');
+    try {
+      const letter = body.columns[name];
+      tab.spreadsheet.setNamedRange(name, tab.sheet.getRange(letter + ':' + letter)); // replaces one on this tab
+      named.push(name);
+    } catch (err) {
+      skipped.push(name + ' (' + err.message + ')');
+    }
+  });
+  return { ok: true, named: named, skipped: skipped };
+}
+
+/**
+ * Looks for the key in each target (spreadsheet + tab) and returns the first matching row, with
+ * the values of named columns by name, so the app can read the answers back however the sheet is laid out.
+ */
 function find(body) {
   const key = String(body.key || '').trim().toLowerCase();
   if (!key) throw new Error('No key');
@@ -171,12 +280,16 @@ function find(body) {
   for (let t = 0; t < targets.length; t++) {
     const target = targets[t];
     if (!allowed[target.spreadsheetId || HOME_SPREADSHEET_ID]) continue;
-    const sheet = openAllowed(target.spreadsheetId, allowed).getSheetByName(target.sheet);
+    const spreadsheet = openAllowed(target.spreadsheetId, allowed);
+    const sheet = spreadsheet.getSheetByName(target.sheet);
     if (!sheet) continue;
-    const head = headerRow(sheet);
-    const row = findRow(sheet, head, target.keyColumn, key);
+    const layout = sheetLayout(spreadsheet, sheet);
+    const row = findRow(sheet, keyColumnOf(target, layout), key);
     if (row) {
-      return { ok: true, found: true, target: t, headers: head.map(String), values: sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0] };
+      const values = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
+      const named = {};
+      Object.keys(layout.names).forEach((name) => (named[name] = values[layout.names[name]]));
+      return { ok: true, found: true, target: t, headers: layout.headers, values: values, named: named };
     }
   }
   return { ok: true, found: false };
@@ -210,9 +323,8 @@ function headerRow(sheet) {
   return sheet.getLastColumn() > 0 ? sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0] : [];
 }
 
-/** Row number (2+) whose key column holds this key, or 0. The key column is a letter, or else the "submissionId" header. */
-function findRow(sheet, headers, keyColumn, key) {
-  const column = keyColumn ? columnIndex(keyColumn) : headers.indexOf('submissionId');
+/** Row number (2+) whose key column (index) holds this key, or 0. */
+function findRow(sheet, column, key) {
   if (column < 0 || sheet.getLastRow() < 2) return 0;
   const ids = sheet.getRange(2, column + 1, sheet.getLastRow() - 1, 1).getValues();
   const wanted = String(key).toLowerCase();
@@ -225,6 +337,11 @@ function columnIndex(letter) {
   let index = 0;
   for (const ch of letter) index = index * 26 + (ch.charCodeAt(0) - 64);
   return index - 1;
+}
+
+/** 0 -> "A", 26 -> "AA". */
+function columnLetter(index) {
+  return (index >= 26 ? columnLetter(Math.floor(index / 26) - 1) : '') + String.fromCharCode(65 + (index % 26));
 }
 
 /**

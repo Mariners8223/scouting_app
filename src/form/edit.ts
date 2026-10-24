@@ -22,7 +22,7 @@ export function uniqueId(base: string, taken: Set<string>) {
   return `${base}_${n}`;
 }
 
-/** "How many cycles" -> "howManyCycles". Falls back to q1, q2... for non-English labels. */
+/** "How many cycles" -> "howManyCycles". Falls back to question1, question2... for non-English labels (not q1: Sheets reads that as a cell, so it can't be a range name). */
 export function idFromLabel(label: string, taken: Set<string>) {
   const words = label
     .replace(/\{\w+\}/g, '')
@@ -34,8 +34,8 @@ export function idFromLabel(label: string, taken: Set<string>) {
     .slice(0, 40);
   if (base && /^[A-Za-z]/.test(base)) return uniqueId(base, taken);
   let n = 1;
-  while (taken.has(`q${n}`)) n++;
-  return `q${n}`;
+  while (taken.has(`question${n}`)) n++;
+  return `question${n}`;
 }
 
 /** Copies a tab with fresh question ids, e.g. Active -> Active 2. Conditions inside the copy follow the new ids. */

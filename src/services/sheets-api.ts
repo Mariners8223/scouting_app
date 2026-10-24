@@ -52,18 +52,40 @@ export async function publishTemplate(template: FormSchema, code: string, inUse:
   await callScript('publish', { template, code, inUse });
 }
 
-/** The header row of a spreadsheet tab, for picking question columns. */
-export async function fetchHeaders(spreadsheetId: string, sheet: string, code: string) {
-  const result = await callScript<{ headers: string[] }>('headers', { spreadsheetId, sheet, code });
-  return result.headers;
+export type SheetInfo = {
+  /** False when the tab doesn't exist yet; the first form creates it. */
+  exists: boolean;
+  headers: string[];
+  /** Named ranges on this tab: lowercase name -> column letter. */
+  named: Record<string, string>;
+  /** Lowercase names used on other tabs of the spreadsheet (e.g. a dashboard's input cell). */
+  elsewhere: string[];
+};
+
+/** A tab's headers and named ranges, to show where each question's answer will go. */
+export async function fetchSheetInfo(spreadsheetId: string | undefined, sheet: string, code: string) {
+  return callScript<SheetInfo>('sheetInfo', { spreadsheetId, sheet, code });
 }
 
-export type FindTarget = { spreadsheetId?: string; sheet: string; keyColumn?: string };
+/** Gives columns named ranges, e.g. { team: 'E' }; names already used on another tab are skipped. */
+export async function nameColumns(
+  spreadsheetId: string | undefined,
+  sheet: string,
+  columns: Record<string, string>,
+  code: string,
+) {
+  return callScript<{ named: string[]; skipped: string[] }>('nameColumns', { spreadsheetId, sheet, columns, code });
+}
+
+export type FindTarget = { spreadsheetId?: string; sheet: string; keyName?: string; keyColumn?: string };
 
 /** A saved form's row, looked up by key in each target until one has it. */
 export async function findRow(key: string, targets: FindTarget[]) {
-  return callScript<{ found: boolean; target?: number; headers?: string[]; values?: unknown[] }>('find', {
-    key,
-    targets,
-  });
+  return callScript<{
+    found: boolean;
+    target?: number;
+    headers?: string[];
+    values?: unknown[];
+    named?: Record<string, unknown>;
+  }>('find', { key, targets });
 }

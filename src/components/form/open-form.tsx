@@ -8,7 +8,7 @@ import { AppButton, Card, LabeledInput, Row } from '@/components/ui/controls';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTemplates } from '@/context/templates-context';
 import { answerToString, interpolate, orderedSections, visibleQuestions } from '@/form/logic';
-import { answersFromRow, sheetNameOf } from '@/form/sheet-row';
+import { answersFromRow, KEY_NAME, sheetNameOf } from '@/form/sheet-row';
 import type { Answers, FormSchema, Submission } from '@/form/types';
 import { useTheme } from '@/hooks/use-theme';
 import { findRow, type FindTarget } from '@/services/sheets-api';
@@ -57,7 +57,9 @@ export function OpenForm({ onClose }: { onClose: () => void }) {
     const targets: FindTarget[] = [];
     const owners: FormSchema[] = [];
     for (const t of templates) {
-      const target = { spreadsheetId: t.spreadsheetId, sheet: sheetNameOf(t), keyColumn: t.columnLayout?.key };
+      const target = t.columnLayout
+        ? { spreadsheetId: t.spreadsheetId, sheet: sheetNameOf(t), keyColumn: t.columnLayout.key }
+        : { spreadsheetId: t.spreadsheetId, sheet: sheetNameOf(t), keyName: KEY_NAME };
       if (targets.some((x) => JSON.stringify(x) === JSON.stringify(target))) continue;
       targets.push(target);
       owners.push(t);
@@ -73,7 +75,7 @@ export function OpenForm({ onClose }: { onClose: () => void }) {
       setOpened({
         key: wanted,
         template,
-        answers: answersFromRow(template, result.headers ?? [], result.values ?? []),
+        answers: answersFromRow(template, result.headers ?? [], result.values ?? [], result.named),
         source: `From the spreadsheet, tab “${sheetNameOf(template)}”`,
       });
     } catch (e) {

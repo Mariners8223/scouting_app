@@ -46,7 +46,7 @@ export type Question = {
   showIf?: Condition;
   /** Keep the answer for the next match (e.g. scouter name). Numbers go up by one step. */
   keepAfterSubmit?: boolean;
-  /** Spreadsheet column letter, e.g. "W". Only used when the template has a fixed column layout. */
+  /** Older templates only: a fixed spreadsheet column letter. Answers now go by name (the id); see FormSchema. */
   column?: string;
 };
 
@@ -67,9 +67,8 @@ export type SectionOrderRule = {
 };
 
 /**
- * Writes answers into fixed spreadsheet columns instead of one column per question id,
- * so a sheet built for another tool (the 2026 AppSheet table the dashboards read) keeps its layout.
- * Questions without a column still go under a header with their id, after the fixed columns.
+ * Older templates only: fixed column letters. The editor can convert them to named ranges
+ * ("Switch to named ranges"), after which the sheet decides where each answer goes.
  */
 export type ColumnLayout = {
   /** Column that gets the submission id; a form the sheet already has is skipped. */
@@ -93,7 +92,13 @@ export type FormSchema = {
   sheetName?: string;
   /** The version last published to all phones (or downloaded from there). */
   publishedVersion?: number;
-  /** Write to fixed columns (each question's `column`) instead of one column per question id. */
+  /**
+   * Same value in every row, by name, e.g. { from: 'Mariners' }.
+   * Every answer is sent by its question id; the sheet places each name in the column with that
+   * named range (Data > Named ranges), else that header, else a new column.
+   */
+  constants?: Record<string, string>;
+  /** Older templates only: write to fixed column letters. */
   columnLayout?: ColumnLayout;
   sections: Section[];
   orderRule?: SectionOrderRule;
