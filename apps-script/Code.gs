@@ -19,14 +19,30 @@
  * - publish:     store a template for all phones (needs the editor code).
  * - sheetInfo:   a tab's headers and named ranges, for checking a template in the editor (needs the editor code).
  * - nameColumns: give columns of a tab named ranges (needs the editor code).
+ * - unnameColumns, copyValues: maintenance, used to move the data into the home spreadsheet (need the editor code).
  * - find:        a saved form by its key.
  *
  * Forms are only written to and read from spreadsheets that a published template points to
  * (or the home spreadsheet), so the public URL can't be used to reach other spreadsheets.
  */
 
-/** Where the published templates are kept (tab below), and where forms go when a template names no spreadsheet. */
-const HOME_SPREADSHEET_ID = '1YljG5_ezLNby8Q5_s2LO5AzavrguWDuhJ9ikbe-Y3-Y';
+/**
+ * The team's scouting spreadsheet: all forms write into it, the dashboards are in it, and the
+ * published templates are kept in its tab below. Forms go here when a template names no spreadsheet.
+ */
+const HOME_SPREADSHEET_ID = '1zo34EcLqcVrL0khhelGs_KYZyS1D0BhZFjctMLwE9tk';
+
+/**
+ * Spreadsheets the forms used to write to, and the tab of the home spreadsheet that replaced each of
+ * their tabs. A form a phone saved before the move still lands in the right place, and nothing is
+ * ever written to the old files again.
+ */
+const MOVED = {
+  '1YljG5_ezLNby8Q5_s2LO5AzavrguWDuhJ9ikbe-Y3-Y': { Table: 'Table Regular' }, // AppSheet match data
+  '1zN89brA_5Wdeb5xyZ1ldXJNQjAXhTzBs8Tawr4UunRE': { Sheet1: 'Table Fuel' },
+  '1t_jD43xrGKPzMrIcdRK8We3n5VlJBjIa8MlTsCBfIe0': { Sheet1: 'Table Pit' },
+  '1NFWKbsYDfSc_JtdXi6JPjKjxGnNny67JAUUFVN0cyWU': { wetscouting: 'wetscouting' }, // the dashboard file before the copy
+};
 const TEMPLATES_TAB = 'App Templates';
 /** SHA-256 of the editor code. The repo is public, so the code itself is not written here. */
 const EDITOR_CODE_SHA256 = 'c198adee3b92e835eb4e852ec7e7ddbb0c4e2e296129e1ac5aeb24ad3cab73c1';
@@ -39,6 +55,8 @@ const ACTIONS = {
   publish: publish,
   sheetInfo: sheetInfo,
   nameColumns: nameColumns,
+  unnameColumns: unnameColumns,
+  copyValues: copyValues,
   find: find,
 };
 
@@ -70,7 +88,9 @@ function submit(body) {
   const errors = [];
   for (const item of body.submissions || []) {
     try {
-      appendSubmission(openAllowed(item.spreadsheetId, allowed), item);
+      const target = resolve(item.spreadsheetId, item.sheet);
+      item.sheet = target.sheet;
+      appendSubmission(openAllowed(target.spreadsheetId, allowed), item);
       saved.push(item.id);
     } catch (err) {
       // One bad form (e.g. a template that isn't published yet) doesn't block the others.
@@ -122,6 +142,7 @@ function appendSubmission(spreadsheet, item) {
 
 /** The tab's header row and named ranges: { headers, names: {name(lowercase): column}, taken: {name: true} for every tab, end }. */
 function sheetLayout(spreadsheet, sheet) {
+  const prefix = tabPrefix(sheet).toLowerCase();
   const names = {};
   const taken = {};
   let end = 0;
@@ -131,7 +152,10 @@ function sheetLayout(spreadsheet, sheet) {
     const range = named.getRange();
     // Named ranges on other tabs (a dashboard's input cell, a chart's data) are never written to.
     if (range.getSheet().getSheetId() !== sheet.getSheetId()) return;
-    names[name] = range.getColumn() - 1;
+    const column = range.getColumn() - 1;
+    // "Table_Fuel_team" on the tab "Table Fuel" is that tab's "team" (see nameColumn).
+    const local = name.indexOf(prefix) === 0 ? name.slice(prefix.length) : name;
+    if (names[local] === undefined || local === name) names[local] = column;
     end = Math.max(end, range.getColumn());
   });
   return { headers: headerRow(sheet).map(String), names: names, taken: taken, end: end };
@@ -149,19 +173,31 @@ function keyColumnOf(item, layout) {
   return column >= 0 ? column : layout.headers.indexOf('submissionId');
 }
 
-/** Gives a whole column a named range, unless the name is taken (anywhere) or isn't allowed (e.g. "q1" looks like a cell). */
+/** "Table Fuel" -> "Table_Fuel_": names a tab's column when its plain name is already used elsewhere in the file. */
+function tabPrefix(sheet) {
+  return sheet.getName().replace(/\W+/g, '_').replace(/^_+|_+$/g, '') + '_';
+}
+
+/**
+ * Gives a whole column a named range: the plain name, or, when another tab already uses it (several
+ * forms in one spreadsheet all have "team"), the name with the tab in front ("Table_Fuel_team").
+ * Returns the name used, or '' when neither is possible (e.g. "q1" looks like a cell).
+ */
 function nameColumn(spreadsheet, sheet, name, column, layout) {
-  const lower = String(name).toLowerCase();
-  if (layout.taken[lower]) return false;
-  try {
-    const letter = columnLetter(column);
-    spreadsheet.setNamedRange(name, sheet.getRange(letter + ':' + letter));
-    layout.taken[lower] = true;
-    layout.names[lower] = column;
-    return true;
-  } catch (err) {
-    return false;
+  const letter = columnLetter(column);
+  for (const candidate of [String(name), tabPrefix(sheet) + name]) {
+    const lower = candidate.toLowerCase();
+    if (layout.taken[lower]) continue;
+    try {
+      spreadsheet.setNamedRange(candidate, sheet.getRange(letter + ':' + letter));
+      layout.taken[lower] = true;
+      layout.names[String(name).toLowerCase()] = column;
+      return candidate;
+    } catch (err) {
+      // not allowed as a name: try the next one
+    }
   }
+  return '';
 }
 
 // ---------- templates ----------
@@ -255,17 +291,59 @@ function nameColumns(body) {
   const named = [];
   const skipped = [];
   Object.keys(body.columns || {}).forEach((name) => {
-    const lower = name.toLowerCase();
-    if (layout.taken[lower] && layout.names[lower] === undefined) return skipped.push(name + ' (used on another tab)');
-    try {
-      const letter = body.columns[name];
-      tab.spreadsheet.setNamedRange(name, tab.sheet.getRange(letter + ':' + letter)); // replaces one on this tab
-      named.push(name);
-    } catch (err) {
-      skipped.push(name + ' (' + err.message + ')');
+    const letter = body.columns[name];
+    // Already named on this tab: move that name to this column.
+    const own = [name, tabPrefix(tab.sheet) + name].filter((n) => ownsName(tab, n))[0];
+    if (own) {
+      tab.spreadsheet.setNamedRange(own, tab.sheet.getRange(letter + ':' + letter));
+      return named.push(own);
     }
+    const used = nameColumn(tab.spreadsheet, tab.sheet, name, columnIndex(letter), layout);
+    if (used) named.push(used);
+    else skipped.push(name);
   });
   return { ok: true, named: named, skipped: skipped };
+}
+
+/** True when the named range with this name is on this tab. */
+function ownsName(tab, name) {
+  const range = tab.spreadsheet.getRangeByName(name);
+  return !!range && range.getSheet().getSheetId() === tab.sheet.getSheetId();
+}
+
+/** Removes named ranges by name (e.g. to free a name for another tab). */
+function unnameColumns(body) {
+  checkCode(body.code);
+  const spreadsheet = SpreadsheetApp.openById(body.spreadsheetId || HOME_SPREADSHEET_ID);
+  const removed = [];
+  (body.names || []).forEach((name) => {
+    if (spreadsheet.getRangeByName(name)) {
+      spreadsheet.removeNamedRange(name);
+      removed.push(name);
+    }
+  });
+  return { ok: true, removed: removed };
+}
+
+/**
+ * Copies a whole tab's values into a tab of the home spreadsheet, starting at a cell, after clearing
+ * that cell (e.g. the IMPORTRANGE formula that used to bring the data in, and everything it spilled).
+ * Text stays text.
+ */
+function copyValues(body) {
+  checkCode(body.code);
+  const from = SpreadsheetApp.openById(body.from.spreadsheetId).getSheetByName(body.from.sheet);
+  const to = SpreadsheetApp.openById(HOME_SPREADSHEET_ID).getSheetByName(body.to.sheet);
+  if (!from || !to) throw new Error('Tab not found');
+  const rows = from.getLastRow();
+  const columns = from.getLastColumn();
+  const values = rows && columns ? from.getRange(1, 1, rows, columns).getValues() : [];
+  const start = to.getRange(body.to.cell);
+  start.clearContent();
+  if (values.length) {
+    to.getRange(start.getRow(), start.getColumn(), values.length, columns).setValues(values.map((r) => r.map(asText)));
+  }
+  return { ok: true, rows: values.length, columns: columns };
 }
 
 /**
@@ -278,8 +356,8 @@ function find(body) {
   const allowed = allowedSpreadsheets();
   const targets = body.targets || [];
   for (let t = 0; t < targets.length; t++) {
-    const target = targets[t];
-    if (!allowed[target.spreadsheetId || HOME_SPREADSHEET_ID]) continue;
+    const target = Object.assign({}, targets[t], resolve(targets[t].spreadsheetId, targets[t].sheet));
+    if (!allowed[target.spreadsheetId]) continue;
     const spreadsheet = openAllowed(target.spreadsheetId, allowed);
     const sheet = spreadsheet.getSheetByName(target.sheet);
     if (!sheet) continue;
@@ -297,12 +375,20 @@ function find(body) {
 
 // ---------- helpers ----------
 
+/** Where a form for this spreadsheet + tab really goes: moved files point to the home spreadsheet. */
+function resolve(spreadsheetId, sheet) {
+  const id = spreadsheetId || HOME_SPREADSHEET_ID;
+  const moved = MOVED[id];
+  if (moved && moved[sheet]) return { spreadsheetId: HOME_SPREADSHEET_ID, sheet: moved[sheet] };
+  return { spreadsheetId: id, sheet: sheet };
+}
+
 /** Spreadsheets forms may go to: the home one and every published template's. */
 function allowedSpreadsheets() {
   const allowed = {};
   allowed[HOME_SPREADSHEET_ID] = true;
   publishedRows().forEach((r) => {
-    if (r[6]) allowed[String(r[6])] = true;
+    if (r[6] && !MOVED[String(r[6])]) allowed[String(r[6])] = true;
   });
   return allowed;
 }

@@ -5,9 +5,10 @@ import type { Condition, FormSchema, Question } from './types';
  * scouting training deck. It is only the starting point: everything here
  * can be changed from the Form Editor tab.
  *
- * Answers go to the AppSheet "Table" that the 2026 dashboards read. Each of its columns has a
- * named range with the question id (team, climbLevel, ...), so every answer lands in the same
- * column AppSheet used, with the same answer texts, and the dashboards keep working.
+ * Answers go to "Table Regular" in the team's scouting spreadsheet, the table the 2026 dashboards
+ * read (it used to import the AppSheet data). Each of its columns has a named range with the
+ * question id (team, climbLevel, ...), so every answer lands in the column AppSheet used, with the
+ * same answer texts, and the dashboards keep working.
  */
 
 const RATING = ['Good', 'Mid', 'Bad', "Didn't do"];
@@ -125,8 +126,8 @@ export const DEFAULT_SCHEMA: FormSchema = {
   year: 2026,
   version: 1,
   updatedAt: '2026-10-23T00:00:00.000Z',
-  spreadsheetId: '1YljG5_ezLNby8Q5_s2LO5AzavrguWDuhJ9ikbe-Y3-Y',
-  sheetName: 'Table',
+  spreadsheetId: '1zo34EcLqcVrL0khhelGs_KYZyS1D0BhZFjctMLwE9tk',
+  sheetName: 'Table Regular',
   constants: { from: 'Mariners' },
   sections: [
     {

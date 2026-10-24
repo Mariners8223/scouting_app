@@ -72,7 +72,7 @@ Built from the "הכשרות סקאוטינג יבש 2026" training slides (AppS
 Info (scouter, event, match, team, alliance, no-show), Auto (start position, collection, shot zones 1–9, end zone, tower position/success, did his alliance win Auto), Active / Active 2 (roles, cycles, defense on him, fight or flight, his defense, serving + rolled from/to), Inactive / Inactive 2 (roles, his defense, zone, description), Endgame (climb time, level, position, success), General (collection quality, shoot while collecting, fall, wobble, stuck on bump, disabled, stuck on fuel, comments in Hebrew, cycle description, serving / defense / defense-on-him comments).
 Role is several choices, like in AppSheet. The Info fields alliance and no-show were guessed (the slides don't show them).
 
-**It writes into the AppSheet table.** The 2026 dashboards ("scouting master frontend for new scouting app 2026") read the AppSheet match table (`Table` tab of spreadsheet `1YljG5…`) through `IMPORTRANGE` into "Table Regular", and every formula there uses fixed column letters. On 2026-10-24 that table's columns got **named ranges** after the question ids (53 of them: `key` → A, `from` → C, `scouter` → D, `team` → E, `event` → F, `match` → G, start position → I, active role → W, cycles → X, climb level → BH, fall/wobble/bump/disable → BN–BQ, collection → CD, …), so each answer lands in the column AppSheet used, with the same answer texts. Alliance, no-show, the active-shift defense zone and `submittedAt`/`template`/`formVersion` have no AppSheet column, so they go after column CD, outside the range the dashboard imports. Checked live: an existing AppSheet row reads back correctly through the named ranges.
+**It writes into `Table Regular` of the team spreadsheet.** The 2026 dashboards read that tab, and every formula there uses fixed column letters. Its columns have **named ranges** after the question ids (58: `key` → A, `from` → C, `scouter` → D, `team` → E, `event` → F, `match` → G, start position → I, active role → W, cycles → X, climb level → BH, fall/wobble/bump/disable → BN–BQ, collection → CD, and the app's extra columns `submittedAt`, `template`, `formVersion`, `alliance`, `noShow` after CD), so each answer lands in the column AppSheet used, with the same answer texts.
 
 A built-in template that was never saved in the editor (version 1) is replaced by the app's newest version when the app starts. After that, **every publish replaces each phone's copy**: a phone takes a published template whenever its version differs from `downloadedVersion`, the published version the copy really is (`publishedVersion` alone isn't enough: older app versions also set it on copies they kept), even if the copy was edited on the phone; edits made after a phone got a version stay only until the next publish. (Before 2026-10-24 a newer local copy won, which left one phone with an emptied Match form; the Match form was republished as v50.) A downloaded template that fails the editor's checks is ignored, so a broken publish never replaces a working form.
 
@@ -80,20 +80,20 @@ The four shift tabs of the match form are numbered by their place in the current
 
 ## Where the 2026 data lives (checked 2026-10-24)
 
-Data is entered in only four tabs, one per form; every other tab of the dashboard file ("scouting master frontend for new scouting app 2026", `1NFWKbs…`) is formulas, charts or hand-typed lists (Teams Numbers, OPR Data, groups), and the app never writes there.
+**Everything is in one spreadsheet**, the team's copy of "scouting master frontend for new scouting app 2026" (`1zo34EcLqcVrL0khhelGs_KYZyS1D0BhZFjctMLwE9tk`, `HOME_SPREADSHEET_ID` in `Code.gs`). On 2026-10-24 the data its tabs used to import (AppSheet match table, Fuel and Pit files) was copied in as values and the imports removed, so it links to no other file. Data is entered in only four of its tabs, one per form; every other tab is formulas, charts or hand-typed lists (Teams Numbers, OPR Data, groups), and the app never writes there. The old files (AppSheet `1YljG5…`, Fuel `1zN89…`, Pit `1t_jD…`, the original dashboard `1NFWKbs…`) are never written to again: `MOVED` in `Code.gs` sends forms that phones saved for them to the matching tab here.
 
-| Form (template id) | Writes to | Read by |
+| Form (template id) | Writes to (tab) | Read by |
 | --- | --- | --- |
-| Match Scouting 2026 (`match-2026`, built in) | AppSheet file `1YljG5…` → `Table` | Table Regular → Sum Dashboard, Team Dashboard, graph helpers, pick lists |
-| Fuel Scouting 2026 (`fuel-2026`) | Fuel file `1zN89…` → `Sheet1` | Table Fuel → Pick list data |
-| Pit Scouting 2026 (`pit-2026`) | Pit file `1t_jD…` → `Sheet1` | Table Pit (no formula uses it yet) |
-| Wet Scouting 2026 (`wet-2026`) | dashboard file `1NFWKbs…` → `wetscouting` | Team Dashboard (notes) |
+| Match Scouting 2026 (`match-2026`, built in) | `Table Regular` (plain names) | Sum Dashboard, Team Dashboard, graph helpers, pick lists |
+| Fuel Scouting 2026 (`fuel-2026`) | `Table Fuel` (names `Table_Fuel_…` where taken) | Pick list data |
+| Pit Scouting 2026 (`pit-2026`) | `Table Pit` (`Table_Pit_…`) | no formula uses it yet |
+| Wet Scouting 2026 (`wet-2026`) | `wetscouting` (`wetscouting_…`) | Team Dashboard (notes) |
 
 Fuel, Pit and Wet were made on 2026-10-24 from those tabs' existing headers, their columns got named ranges after the question ids, and they were published (not "in use"). Their question types were guessed from the headers (the tabs were empty); change them in the Form Editor if needed. The script account (ironih.frc@gmail.com) has edit access to all four files.
 
 ## Published templates
 
-- **Publish** stores the template in the `App Templates` tab of the home spreadsheet (`HOME_SPREADSHEET_ID` in `Code.gs`, the AppSheet data spreadsheet `1YljG5…`): one row per template, with the JSON split over cells (a cell holds 50,000 characters). One template can be marked **in use**; phones switch to it once each time that changes, so a scouter can still pick another one afterwards.
+- **Publish** stores the template in the `App Templates` tab of the home spreadsheet (`HOME_SPREADSHEET_ID` in `Code.gs`, the team spreadsheet): one row per template, with the JSON split over cells (a cell holds 50,000 characters). One template can be marked **in use**; phones switch to it once each time that changes, so a scouter can still pick another one afterwards.
 - Phones download the published templates when the app opens, when the internet comes back and at most every 5 minutes while open.
 - The template list shows each template's state: "only on this phone", "published", or "published vN, not this version".
 
@@ -117,7 +117,7 @@ The Form Editor asks for a code, and **publishing and loading columns ask for it
   clasp.cmd push --force
   clasp.cmd update-deployment AKfycbxfA8ZqY-I_bwsIrxuvhZ58LgjIjc5ZZm7SqyCpWtwHgY2B_Kzmo4Bp_r8SVsoOs44
   ```
-  (`npm install -g @google/clasp`, `clasp.cmd login` once; use `clasp.cmd` because PowerShell blocks `clasp.ps1`.) The account that deploys it needs edit access to `1YljG5…` and each later season's spreadsheet. A browser GET of the URL can show an old cached reply for a minute after deploying.
+  (`npm install -g @google/clasp`, `clasp.cmd login` once; use `clasp.cmd` because PowerShell blocks `clasp.ps1`.) The account that deploys it needs edit access to the team spreadsheet (`1zo34Ec…`) and any other spreadsheet a template is pointed at. A browser GET of the URL can show an old cached reply for a minute after deploying.
 - Checked live: the script answers the app, publishing works (a "2027 test" template was published from a phone), the 2026 table's named ranges are in place and an existing row reads back by key. Tested in Node against fake spreadsheets (`apps-script` tests live outside the repo): every 2026 answer lands in its old AppSheet column through the named ranges, resend skipped, a column inserted in the middle is followed, a new spreadsheet with dashboard tabs (dashboards untouched, a name used by a dashboard cell falls back to a header column, `q1` header-only), later questions appended, read-back by name, older letter-based templates, allow-list, publish codes, a 100,000-character template.
 
 ## PWA / deployment

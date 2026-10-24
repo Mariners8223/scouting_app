@@ -8,22 +8,24 @@ A **template** (`FormSchema`, `src/form/types.ts`) is plain JSON: tabs (`section
 
 ## Where the 2026 data lives
 
-| Template id | Writes to (spreadsheet → tab) | Read by |
+| Template id | Writes to (tab of the team spreadsheet) | Read by |
 | --- | --- | --- |
-| `match-2026` (built into the app, `src/form/default-schema.ts`) | AppSheet file `1YljG5_ezLNby8Q5_s2LO5AzavrguWDuhJ9ikbe-Y3-Y` → `Table` | dashboard file's `Table Regular` (IMPORTRANGE `Table!A:CD`) → Sum Dashboard, Team Dashboard, graph helpers, pick lists |
-| `fuel-2026` | `1zN89brA_5Wdeb5xyZ1ldXJNQjAXhTzBs8Tawr4UunRE` → `Sheet1` | `Table Fuel` → `Pick list data` |
-| `pit-2026` | `1t_jD43xrGKPzMrIcdRK8We3n5VlJBjIa8MlTsCBfIe0` → `Sheet1` | `Table Pit` (unused) |
-| `wet-2026` | dashboard file `1NFWKbsYDfSc_JtdXi6JPjKjxGnNny67JAUUFVN0cyWU` → `wetscouting` | Team Dashboard notes |
+| `match-2026` (built into the app, `src/form/default-schema.ts`) | `Table Regular` | Sum Dashboard, Team Dashboard, graph helpers, pick lists |
+| `fuel-2026` | `Table Fuel` | `Pick list data` |
+| `pit-2026` | `Table Pit` | nothing yet |
+| `wet-2026` | `wetscouting` | Team Dashboard notes |
 
-The dashboard file ("scouting master frontend for new scouting app 2026") has ~25 tabs; only `wetscouting` is entered data. Everything else there is formulas, charts or hand-typed lists (Teams Numbers, OPR Data). The home spreadsheet (`HOME_SPREADSHEET_ID` in `Code.gs`) is the AppSheet file; it also holds `App Templates`.
+**Everything is in one spreadsheet**, the team's copy of "scouting master frontend for new scouting app 2026": `1zo34EcLqcVrL0khhelGs_KYZyS1D0BhZFjctMLwE9tk` (`HOME_SPREADSHEET_ID` in `Code.gs`). All four forms write into its tabs, its dashboards read those tabs, and the published templates are kept in its `App Templates` tab. It has no IMPORTRANGE or other link to any other file: on 2026-10-24 the data that used to be imported (AppSheet match table, Fuel and Pit files) was copied in as plain values and the imports were removed. Of its ~25 tabs only those four hold entered data; the rest are formulas, charts or hand-typed lists (Teams Numbers, OPR Data).
 
-All four spreadsheets can be read without signing in through `https://docs.google.com/spreadsheets/d/<id>/export?format=xlsx` (they're shared by link). Read them with openpyxl to see headers, formulas and which tabs depend on which.
+The files used before (AppSheet `1YljG5…`, Fuel `1zN89…`, Pit `1t_jD…`, the original dashboard `1NFWKbs…`) are **never written to**: `MOVED` in `Code.gs` sends forms that phones saved for them to the matching tab of the team spreadsheet. Don't point a template at another spreadsheet unless the user asks for it.
+
+The old files can be read without signing in through `https://docs.google.com/spreadsheets/d/<id>/export?format=xlsx` (they're shared by link); the team spreadsheet isn't, so read it through the script (`sheetInfo`, `find`) or ask the user to share it.
 
 ## Rules that keep things working
 
 1. **A question's `id` is its column name.** Never rename an id that already has data; the column stays under the old name and new answers start a new column. Changing a label is fine.
 2. **Ids must be valid range names**: start with a letter; letters, digits and `_`; not cell-like (`q1`, `A1`, `AB12` are rejected by Sheets) and not `TRUE`/`FALSE`. An invalid name still works through a header column, but gets no named range. The editor's fallback id is `question1`, `question2`… for this reason.
-3. **Named ranges are unique per spreadsheet** (case-insensitive). If a dashboard cell already uses a name, the data column can't have it and falls back to a header column. Prefer distinct names for dashboard cells (`selectedTeam`).
+3. **Named ranges are unique per spreadsheet** (case-insensitive), and all forms share one spreadsheet. A column gets its plain name when it is free, else the name with its tab in front: `Table_Fuel_team`, `Table_Pit_team`, `wetscouting_team` (the match table, `Table Regular`, has the plain names). The script treats `<Tab>_<id>` on that tab as `<id>`. Dashboard formulas use the full name (`=COUNTIF(Table_Fuel_team, …)`). Prefer distinct names for dashboard cells (`selectedTeam`).
 4. **Existing tables are connected by naming their columns**, never by moving columns or changing headers. Dashboards there use fixed letters (`Table Regular!E:E`); named ranges don't change letters.
 5. **Value formats are fixed** (`sheetValue` in `src/form/sheet-row.ts`): numbers stay numbers, yes/no is `TRUE`/`FALSE`, multiple choice is joined with `" , "`, text is written as text (a leading `'`, so `8223` stays the string AppSheet wrote and `=…` is never a formula). Dashboard formulas count on this (`COUNTIF(..., TRUE)`, `"*Defense*"`).
 6. **Only allowed spreadsheets are touched**: the home spreadsheet plus those of published templates. A form for an unpublished spreadsheet stays queued on the phone ("Publish the template first"). The script account (ironih.frc@gmail.com) needs **Editor** access to each spreadsheet.
@@ -59,7 +61,9 @@ The 2026 match form uses `orderRule` on `autoWon`: the alliance that won Auto is
 | `templates` | `{}` | no | `{ templates: FormSchema[], inUseId }` |
 | `publish` | `{ code, template, inUse }` | yes | `{ ok }` |
 | `sheetInfo` | `{ code, spreadsheetId?, sheet }` | yes | `{ exists, headers, named: {name: letter}, elsewhere: names[] }` |
-| `nameColumns` | `{ code, spreadsheetId?, sheet, columns: {name: letter} }` | yes | `{ named: [], skipped: [] }` |
+| `nameColumns` | `{ code, spreadsheetId?, sheet, columns: {name: letter} }` | yes | `{ named: [], skipped: [] }` (names used, prefixed when needed) |
+| `unnameColumns` | `{ code, spreadsheetId?, names: [] }` | yes | `{ removed: [] }` |
+| `copyValues` | `{ code, from: { spreadsheetId, sheet }, to: { sheet, cell } }` | yes | copies a tab's values into the home spreadsheet at `cell` (clearing that cell first) |
 | `find` | `{ key, targets: [{ spreadsheetId?, sheet, keyName: 'key' }] }` | no | `{ found, target, headers, values, named }` |
 
 Every reply has `ok`; a reply without it (or HTML) means an old deployment or a transient Google error: retry once. `GET` returns `{"ok":true,"message":"Scouting sync is running"}` (may be cached for a minute after a deploy). Don't name a JS variable `URL` in Node scripts that call `fetch`.
