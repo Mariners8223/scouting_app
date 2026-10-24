@@ -103,6 +103,7 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
         year,
         version: 1,
         publishedVersion: undefined,
+        downloadedVersion: undefined,
         updatedAt: new Date().toISOString(),
       };
       updateTemplates((current) => [...current, created]);
@@ -122,7 +123,7 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
 
   const markPublished = useCallback(
     (id: string, version: number) =>
-      updateTemplates((current) => current.map((t) => (t.id === id ? { ...t, publishedVersion: version } : t))),
+      updateTemplates((current) => current.map((t) => (t.id === id ? { ...t, publishedVersion: version, downloadedVersion: version } : t))),
     [updateTemplates],
   );
 
@@ -133,14 +134,16 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
       const current = templatesRef.current;
       // Each publish replaces the phone's copy, whatever was edited on the phone: the published form
       // is the one everybody scouts with. Edits made on a phone after it got a version stay until the next publish.
-      const newer = usable.filter((p) => current.find((t) => t.id === p.id)?.publishedVersion !== p.version);
+      // downloadedVersion (not publishedVersion, which older app versions also set on copies they kept) says
+      // which published version the copy really is.
+      const newer = usable.filter((p) => current.find((t) => t.id === p.id)?.downloadedVersion !== p.version);
       const changed = newer.map((p) => `${p.year} · ${p.name}`);
       if (newer.length) {
         updateTemplates((list) => {
           const next = [...list];
           for (const p of newer) {
             const at = next.findIndex((t) => t.id === p.id);
-            const merged = { ...p, publishedVersion: p.version };
+            const merged = { ...p, publishedVersion: p.version, downloadedVersion: p.version };
             if (at >= 0) next[at] = merged;
             else next.push(merged);
           }

@@ -3,7 +3,8 @@
 module.exports = {
   globDirectory: 'dist/',
   globPatterns: ['**/*.{html,js,css,json,png,jpg,svg,ico,ttf,woff,woff2}'],
-  globIgnores: ['sw.js', 'workbox-*.js', '404.html'],
+  // version.json must always come from the site: it's how a phone finds out a new version exists.
+  globIgnores: ['sw.js', 'workbox-*.js', '404.html', 'version.json'],
   swDest: 'dist/sw.js',
   // The JS bundle is a few MB; the default 2 MB limit would leave it out.
   maximumFileSizeToCacheInBytes: 15 * 1024 * 1024,

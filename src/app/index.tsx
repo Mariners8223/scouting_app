@@ -51,6 +51,21 @@ export default function ScoutScreen() {
   const activeId = active?.id;
   const draftLoaded = !!activeId && loadedFor === activeId;
 
+  // When the app opens with a newer version on the site, offer to switch to it (scouters rarely press Update).
+  useEffect(() => {
+    downloadAppUpdate()
+      .then((ready) => {
+        if (!ready) return;
+        confirmAction(
+          'New app version ready',
+          'Restart the app to use it? The form you are filling in is kept.',
+          'Restart',
+          restartApp,
+        );
+      })
+      .catch(() => {}); // offline: try again next time
+  }, []);
+
   // Restore an unfinished form (e.g. after the app was closed mid-match).
   useEffect(() => {
     if (!activeId) return;

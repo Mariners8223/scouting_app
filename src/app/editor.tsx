@@ -27,8 +27,9 @@ export default function EditorScreen() {
   const [inUse, setInUse] = useState(true);
 
   const saved = templates.find((t) => t.id === draft?.id);
-  // Publishing or a download only changes publishedVersion, which isn't an edit.
-  const content = (t: FormSchema | undefined) => t && JSON.stringify({ ...t, publishedVersion: undefined });
+  // Publishing or a download only changes these markers, which isn't an edit.
+  const content = (t: FormSchema | undefined) =>
+    t && JSON.stringify({ ...t, publishedVersion: undefined, downloadedVersion: undefined });
   const dirty = !!draft && content(draft) !== content(saved);
 
   const open = (template: FormSchema) => setDraft(JSON.parse(JSON.stringify(template)));

@@ -5,8 +5,12 @@ import type { FormSchema } from '@/form/types';
 /** Calls to the Apps Script web app (apps-script/Code.gs), the app's only server. */
 
 const TIMEOUT_MS = 20000;
+const ATTEMPTS = 3;
 
-async function callScript<T>(action: string, payload: object): Promise<T> {
+/** Thrown when the request reached Google but the reply wasn't the script's; worth trying again. */
+class BadReply extends Error {}
+
+async function callOnce<T>(action: string, payload: object): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -18,8 +22,10 @@ async function callScript<T>(action: string, payload: object): Promise<T> {
       signal: controller.signal,
     });
     const result = await response.json().catch(() => undefined);
-    // Code.gs always answers with "ok"; anything else is another script (e.g. an older deployment at this URL).
-    if (typeof result?.ok !== 'boolean') {
+    // Google sometimes answers with an HTML error page for a moment.
+    if (result === undefined) throw new BadReply('Google didn’t answer properly. Try again in a moment.');
+    // Code.gs always answers with "ok"; JSON without it is another script (e.g. an older deployment at this URL).
+    if (typeof result.ok !== 'boolean') {
       throw new Error(
         'The Google script at this address is an old version. Deploy the new Code.gs as a new version of the existing deployment.',
       );
@@ -28,6 +34,22 @@ async function callScript<T>(action: string, payload: object): Promise<T> {
     return result as T;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/**
+ * Tries a few times when the connection drops or Google gives a one-off error page. Every action is
+ * safe to repeat: a resent form is skipped by its key, and publishing replaces the same row.
+ */
+async function callScript<T>(action: string, payload: object): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await callOnce<T>(action, payload);
+    } catch (e) {
+      const retryable = e instanceof BadReply || e instanceof TypeError || (e instanceof Error && e.name === 'AbortError');
+      if (!retryable || attempt === ATTEMPTS) throw e;
+      await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+    }
   }
 }
 

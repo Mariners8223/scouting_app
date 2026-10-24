@@ -98,6 +98,11 @@ export type FormSchema = {
   /** The version last published to all phones (or downloaded from there). */
   publishedVersion?: number;
   /**
+   * The published version this copy actually is (downloaded, or published from this phone). A publish
+   * replaces the copy whenever its version differs. Copies from before this field always get replaced once.
+   */
+  downloadedVersion?: number;
+  /**
    * Same value in every row, by name, e.g. { from: 'Mariners' }.
    * Every answer is sent by its question id; the sheet places each name in the column with that
    * named range (Data > Named ranges), else that header, else a new column.
