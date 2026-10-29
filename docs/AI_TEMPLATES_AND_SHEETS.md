@@ -65,6 +65,7 @@ The 2026 match form uses `orderRule` on `autoWon`: the alliance that won Auto is
 | `unnameColumns` | `{ code, spreadsheetId?, names: [] }` | yes | `{ removed: [] }` |
 | `copyValues` | `{ code, from: { spreadsheetId, sheet }, to: { sheet, cell } }` | yes | copies a tab's values into the home spreadsheet at `cell` (clearing that cell first) |
 | `find` | `{ key, targets: [{ spreadsheetId?, sheet, keyName: 'key' }] }` | no | `{ found, target, headers, values, named }` |
+| `deleteForm` | `{ code, key, targets }` (same lookup as `find`) | yes | `{ deleted, sheet }`; removes that one row of the team spreadsheet. Keys must look like form keys (6+ letters/digits), so a header such as `Key` can never match. |
 
 Every reply has `ok`; a reply without it (or HTML) means an old deployment or a transient Google error: retry once. `GET` returns `{"ok":true,"message":"Scouting sync is running"}` (may be cached for a minute after a deploy). Don't name a JS variable `URL` in Node scripts that call `fetch`.
 

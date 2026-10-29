@@ -21,6 +21,7 @@
  * - nameColumns: give columns of a tab named ranges (needs the editor code).
  * - unnameColumns, copyValues: maintenance, used to move the data into the home spreadsheet (need the editor code).
  * - find:        a saved form by its key.
+ * - deleteForm:  delete a saved form's row by its key (needs the editor code).
  *
  * Everything happens in ONE spreadsheet, the home spreadsheet below: forms are written there and
  * read from there, whatever spreadsheet a form or template names (a form saved for one of the old
@@ -60,6 +61,7 @@ const ACTIONS = {
   unnameColumns: unnameColumns,
   copyValues: copyValues,
   find: find,
+  deleteForm: deleteForm,
 };
 
 function doPost(e) {
@@ -358,25 +360,42 @@ function copyValues(body) {
  * the values of named columns by name, so the app can read the answers back however the sheet is laid out.
  */
 function find(body) {
+  const found = locate(body);
+  if (!found) return { ok: true, found: false };
+  const values = found.sheet.getRange(found.row, 1, 1, found.sheet.getLastColumn()).getValues()[0];
+  const named = {};
+  Object.keys(found.layout.names).forEach((name) => (named[name] = values[found.layout.names[name]]));
+  return { ok: true, found: true, target: found.target, headers: found.layout.headers, values: values, named: named };
+}
+
+/**
+ * Deletes a saved form's row from the team spreadsheet (needs the editor code). Same lookup as find,
+ * so it can only ever remove one form row of the home spreadsheet, never a header or another file's row.
+ */
+function deleteForm(body) {
+  checkCode(body.code);
+  const found = locate(body);
+  if (!found) return { ok: true, deleted: false };
+  found.sheet.deleteRow(found.row);
+  return { ok: true, deleted: true, sheet: found.sheet.getName() };
+}
+
+/** The form with this key: its tab, row and layout, looking in each target (always tabs of the home spreadsheet). */
+function locate(body) {
   const key = String(body.key || '').trim().toLowerCase();
-  if (!key) throw new Error('No key');
+  // A form key, not a header word like "Key" that a lookup could otherwise match.
+  if (!/^[a-z0-9_]{6,}$/.test(key) || key === 'submissionid') throw new Error('Not a form key');
   const home = SpreadsheetApp.openById(HOME_SPREADSHEET_ID);
   const targets = body.targets || [];
   for (let t = 0; t < targets.length; t++) {
     const target = Object.assign({}, targets[t], { sheet: homeTab(targets[t].spreadsheetId, targets[t].sheet) });
-    const spreadsheet = home;
-    const sheet = spreadsheet.getSheetByName(target.sheet);
+    const sheet = home.getSheetByName(target.sheet);
     if (!sheet) continue;
-    const layout = sheetLayout(spreadsheet, sheet);
+    const layout = sheetLayout(home, sheet);
     const row = findRow(sheet, keyColumnOf(target, layout), key);
-    if (row) {
-      const values = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
-      const named = {};
-      Object.keys(layout.names).forEach((name) => (named[name] = values[layout.names[name]]));
-      return { ok: true, found: true, target: t, headers: layout.headers, values: values, named: named };
-    }
+    if (row) return { target: t, sheet: sheet, row: row, layout: layout };
   }
-  return { ok: true, found: false };
+  return null;
 }
 
 // ---------- helpers ----------

@@ -1,4 +1,6 @@
 import { useState } from 'react';
+
+import { CodePrompt } from '@/components/editor/code-prompt';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -11,7 +13,8 @@ import { answerToString, interpolate, orderedSections, sectionTitles, visibleQue
 import { answersFromRow, KEY_NAME, sheetNameOf } from '@/form/sheet-row';
 import type { Answers, FormSchema, Submission } from '@/form/types';
 import { useTheme } from '@/hooks/use-theme';
-import { findRow, type FindTarget } from '@/services/sheets-api';
+import { confirmAction, showMessage } from '@/services/dialogs';
+import { deleteFormRow, findRow, type FindTarget } from '@/services/sheets-api';
 
 /** A form opened by key: from this phone, or read back from the spreadsheet. */
 type Opened = {
@@ -19,7 +22,26 @@ type Opened = {
   template: FormSchema | undefined;
   answers: Answers;
   source: string;
+  /** The copy saved on this phone, if any. */
+  local?: Submission;
+  /** Whether it is (or may be) in the spreadsheet: opened from there, or sent from this phone. */
+  inSheet: boolean;
 };
+
+/** Every place a template on this phone writes to, once each, with the template that owns it. */
+function targetsOf(templates: FormSchema[]) {
+  const targets: FindTarget[] = [];
+  const owners: FormSchema[] = [];
+  for (const t of templates) {
+    const target = t.columnLayout
+      ? { spreadsheetId: t.spreadsheetId, sheet: sheetNameOf(t), keyColumn: t.columnLayout.key }
+      : { spreadsheetId: t.spreadsheetId, sheet: sheetNameOf(t), keyName: KEY_NAME };
+    if (targets.some((x) => JSON.stringify(x) === JSON.stringify(target))) continue;
+    targets.push(target);
+    owners.push(t);
+  }
+  return { targets, owners };
+}
 
 const RECENT = 15;
 
@@ -27,11 +49,12 @@ const RECENT = 15;
 export function OpenForm({ onClose }: { onClose: () => void }) {
   const theme = useTheme();
   const safeArea = useSafeAreaInsets();
-  const { templates, submissions } = useTemplates();
+  const { templates, submissions, removeSubmission } = useTemplates();
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [opened, setOpened] = useState<Opened>();
+  const [deleting, setDeleting] = useState(false);
 
   const templateOf = (s: Submission) => templates.find((t) => t.id === s.schemaId);
   const recent = [...submissions].reverse().slice(0, RECENT);
@@ -42,6 +65,8 @@ export function OpenForm({ onClose }: { onClose: () => void }) {
       template: templateOf(s),
       answers: s.answers,
       source: `Saved on this phone ${new Date(s.createdAt).toLocaleString()} · ${s.syncedAt ? 'sent to the sheet' : 'not sent yet'}`,
+      local: s,
+      inSheet: !!s.syncedAt,
     });
 
   const open = async () => {
@@ -53,17 +78,7 @@ export function OpenForm({ onClose }: { onClose: () => void }) {
       openLocal(local);
       return;
     }
-    // Every place a template on this phone writes to, once each.
-    const targets: FindTarget[] = [];
-    const owners: FormSchema[] = [];
-    for (const t of templates) {
-      const target = t.columnLayout
-        ? { spreadsheetId: t.spreadsheetId, sheet: sheetNameOf(t), keyColumn: t.columnLayout.key }
-        : { spreadsheetId: t.spreadsheetId, sheet: sheetNameOf(t), keyName: KEY_NAME };
-      if (targets.some((x) => JSON.stringify(x) === JSON.stringify(target))) continue;
-      targets.push(target);
-      owners.push(t);
-    }
+    const { targets, owners } = targetsOf(templates);
     setBusy(true);
     try {
       const result = await findRow(wanted, targets);
@@ -77,12 +92,46 @@ export function OpenForm({ onClose }: { onClose: () => void }) {
         template,
         answers: answersFromRow(template, result.headers ?? [], result.values ?? [], result.named),
         source: `From the spreadsheet, tab “${sheetNameOf(template)}”`,
+        inSheet: true,
       });
     } catch (e) {
       setError(`Couldn’t reach the spreadsheet (${e instanceof Error ? e.message : String(e)}). Forms saved on this phone still open without internet.`);
     } finally {
       setBusy(false);
     }
+  };
+
+  /** Removes the form from this phone, and with the editor code from the spreadsheet too. */
+  const startDelete = () => {
+    if (!opened) return;
+    if (opened.inSheet) {
+      setDeleting(true); // asks for the editor code
+      return;
+    }
+    confirmAction(
+      `Delete form ${opened.key}?`,
+      'It was never sent, so it is only on this phone. It will be deleted and not sent.',
+      'Delete',
+      () => {
+        if (opened.local) removeSubmission(opened.local.id);
+        setOpened(undefined);
+        showMessage('Deleted', `Form ${opened.key} was deleted from this phone.`);
+      },
+    );
+  };
+
+  const deleteFromSheet = async (code: string) => {
+    if (!opened) return;
+    const deleted = await deleteFormRow(opened.key, targetsOf(templates).targets, code);
+    if (opened.local) removeSubmission(opened.local.id);
+    setDeleting(false);
+    setOpened(undefined);
+    showMessage(
+      'Deleted',
+      deleted
+        ? `Form ${opened.key} was deleted from the spreadsheet${opened.local ? ' and this phone' : ''}.`
+        : `Form ${opened.key} wasn’t in the spreadsheet${opened.local ? '; it was deleted from this phone' : ''}.`,
+    );
   };
 
   return (
@@ -98,7 +147,10 @@ export function OpenForm({ onClose }: { onClose: () => void }) {
 
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.content, { paddingBottom: safeArea.bottom + Spacing.six }]}>
           {opened ? (
-            <FormAnswers opened={opened} />
+            <>
+              <FormAnswers opened={opened} />
+              <AppButton title="Delete this form" variant="danger" onPress={startDelete} />
+            </>
           ) : (
             <>
               <Card title="Key">
@@ -144,6 +196,16 @@ export function OpenForm({ onClose }: { onClose: () => void }) {
             </>
           )}
         </ScrollView>
+
+        {deleting && opened ? (
+          <CodePrompt
+            title={`Delete form ${opened.key}`}
+            message={`Deletes its row from the team spreadsheet${opened.local ? ' and the copy on this phone' : ''}. This can’t be undone in the app (the spreadsheet’s version history still has it). Enter the editor code to delete.`}
+            confirmText="Delete"
+            onConfirm={deleteFromSheet}
+            onCancel={() => setDeleting(false)}
+          />
+        ) : null}
       </ThemedView>
     </Modal>
   );

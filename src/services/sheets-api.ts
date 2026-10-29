@@ -101,6 +101,12 @@ export async function nameColumns(
 
 export type FindTarget = { spreadsheetId?: string; sheet: string; keyName?: string; keyColumn?: string };
 
+/** Deletes a saved form's row from the spreadsheet (needs the editor code). Resolves whether a row was deleted. */
+export async function deleteFormRow(key: string, targets: FindTarget[], code: string) {
+  const result = await callScript<{ deleted: boolean }>('deleteForm', { key, targets, code });
+  return result.deleted;
+}
+
 /** A saved form's row, looked up by key in each target until one has it. */
 export async function findRow(key: string, targets: FindTarget[]) {
   return callScript<{

@@ -100,7 +100,7 @@ Fuel, Pit and Wet were made on 2026-10-24 from those tabs' existing headers, the
 ## Keys and opening a form
 
 - Every saved form gets an **8-letter key** (no 0/o/1/l/i), shown after saving and written to the key column (A in the 2026 table). Older forms keep their longer `sub_…` ids.
-- Scout → **Open**: type a key (any case), or tap one of the last 15 forms saved on the phone. Forms on the phone open without internet; otherwise the script looks for the key in the spreadsheet of every template on the phone and the answers are read back from the row (read-only view, tab by tab).
+- Scout → **Open**: type a key (any case), or tap one of the last 15 forms saved on the phone. **Delete this form** at the bottom: a form never sent is removed from the phone after a confirm; a form in the sheet needs the editor code and its row is deleted from the team spreadsheet (`deleteForm`) and from the phone. Forms on the phone open without internet; otherwise the script looks for the key in the spreadsheet of every template on the phone and the answers are read back from the row (read-only view, tab by tab).
 
 ## Editor code
 

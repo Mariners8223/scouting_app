@@ -26,6 +26,8 @@ type TemplatesContextValue = {
   addSubmission: (schema: FormSchema, answers: Answers) => Submission;
   /** Called by the sync once the spreadsheet confirmed these forms. */
   markSynced: (ids: string[]) => void;
+  /** Removes a saved form from this phone (it won't be sent). */
+  removeSubmission: (id: string) => void;
 };
 
 const TemplatesContext = createContext<TemplatesContextValue | null>(null);
@@ -199,6 +201,11 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
     [updateSubmissions],
   );
 
+  const removeSubmission = useCallback(
+    (id: string) => updateSubmissions((current) => current.filter((s) => s.id !== id)),
+    [updateSubmissions],
+  );
+
   const value = useMemo<TemplatesContextValue>(
     () => ({
       loading,
@@ -213,6 +220,7 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
       submissions,
       addSubmission,
       markSynced,
+      removeSubmission,
     }),
     [
       loading,
@@ -227,6 +235,7 @@ export function TemplatesProvider({ children }: { children: ReactNode }) {
       submissions,
       addSubmission,
       markSynced,
+      removeSubmission,
     ],
   );
 
